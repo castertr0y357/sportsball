@@ -125,12 +125,13 @@
 
 <div class="page-header">
     <div>
-        <span class="badge badge-warning">Single-Operator Dugout Console &amp; Walk-Up DJ</span>
-        <h1>{{ game.team2.name }} (Away) at {{ game.team1.name }} (Home)</h1>
+        <span class="badge badge-warning">Live Game Operator Console &amp; Audio DJ</span>
+        <h1>{{ game.team2.name }} (Away) vs {{ game.team1.name }} (Home)</h1>
+        <small style="color:var(--text-muted);">Sport: <strong>{{ game.season.league.get_sport_display|default:"Fellowship" }}</strong> &bull; {{ game.location }}</small>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
         <button type="button" id="btn-precache" class="btn btn-sm btn-accent" onclick="precacheGameForOffline()">
-            &#128229; Cache All Audio for Offline
+            &#128229; Cache Audio Offline
         </button>
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary btn-sm" target="_blank">Public GameCast &nearr;</a>
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary btn-sm">&larr; Box Score</a>
@@ -184,18 +185,34 @@
         </div>
     </div>
 
-    <!-- Inning, Outs & Interactive Base Diamond -->
+    <!-- Inning, Outs & Interactive Base Diamond (Softball/Baseball only) OR Period Tracker (Basketball/Volleyball/Etc) -->
     <div style="text-align:center;">
         <div style="font-size:1.25rem; font-weight:700; margin-bottom:0.25rem;">
-            <span id="inning-half-label">Top</span> <span id="inning-number">1</span>
-            &bull; <span style="color:#fde68a;" id="outs-display">0 Outs</span>
+            <span id="period-display">
+                <span id="inning-half-label">Top</span> <span id="inning-number">1</span>
+            </span>
+            <span id="outs-container">&bull; <span style="color:#fde68a;" id="outs-display">0 Outs</span></span>
         </div>
-        <small style="color:#94a3b8;">Tap any base to toggle runner on/off</small>
-        <div class="diamond-wrap">
-            <button type="button" id="base-2B" class="base-btn base-2b" onclick="sendAction('toggle_base', {base:'2B'})"><span>2B</span></button>
-            <button type="button" id="base-3B" class="base-btn base-3b" onclick="sendAction('toggle_base', {base:'3B'})"><span>3B</span></button>
-            <button type="button" id="base-1B" class="base-btn base-1b" onclick="sendAction('toggle_base', {base:'1B'})"><span>1B</span></button>
-            <div class="base-home" title="Home Plate"></div>
+        <div id="diamond-section">
+            <small style="color:#94a3b8;">Tap any base to toggle runner</small>
+            <div class="diamond-wrap">
+                <button type="button" id="base-2B" class="base-btn base-2b" onclick="sendAction('toggle_base', {base:'2B'})"><span>2B</span></button>
+                <button type="button" id="base-3B" class="base-btn base-3b" onclick="sendAction('toggle_base', {base:'3B'})"><span>3B</span></button>
+                <button type="button" id="base-1B" class="base-btn base-1b" onclick="sendAction('toggle_base', {base:'1B'})"><span>1B</span></button>
+                <div class="base-home" title="Home Plate"></div>
+            </div>
+        </div>
+        <div id="non-diamond-quick-score" style="display:none; margin-top:0.75rem;">
+            <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_plus', {team:'team2', points:1})">+1 Away</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_plus', {team:'team2', points:2})">+2 Away</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_plus', {team:'team2', points:3})">+3 Away</button>
+            </div>
+            <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.35rem;">
+                <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1', points:1})">+1 Home</button>
+                <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1', points:2})">+2 Home</button>
+                <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1', points:3})">+3 Home</button>
+            </div>
         </div>
     </div>
 
@@ -224,13 +241,15 @@
 <!-- 1-Tap Operator Action Pad -->
 <div class="grid grid-2" style="margin-bottom:1.5rem;">
     <div class="card">
-        <h2>1-Tap At-Bat &amp; Scorekeeper Controls</h2>
-        <p style="margin-top:0; font-size:0.88rem; color:var(--text-muted);">
-            Each at-bat button updates runs/hits/outs, advances the lineup to the next present batter, and triggers their walk-up song! Works offline if cell service drops.
+        <h2 id="action-pad-title">1-Tap Game Controls &amp; Player Jams</h2>
+        <p style="margin-top:0; font-size:0.88rem; color:var(--text-muted);" id="action-pad-desc">
+            Advance player rotations, update score, and cue up walk-up/intro music with 1 tap.
         </p>
-        <div class="action-grid">
+
+        <!-- Softball/Baseball At-Bat Controls -->
+        <div id="diamond-action-grid" class="action-grid">
             <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
-                &#9654; NEXT BATTER (Auto-Play Walk-Up Song)
+                &#9654; NEXT BATTER / ROTATION (Play Song)
             </button>
             <button type="button" class="action-btn btn-hit" onclick="sendAction('single')">
                 BASE HIT (1B)
@@ -245,9 +264,29 @@
                 +1 OUT
             </button>
         </div>
+
+        <!-- Universal Court/Field Controls (Basketball, Volleyball, Pickleball, Flag Football) -->
+        <div id="court-action-grid" style="display:none;" class="action-grid">
+            <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
+                &#9654; NEXT SERVER / PLAYER ROTATION (Play Song)
+            </button>
+            <button type="button" class="action-btn btn-hit" onclick="sendAction('run_plus', {team:'batting', points:1})">
+                +1 POINT
+            </button>
+            <button type="button" class="action-btn btn-walk" onclick="sendAction('run_plus', {team:'batting', points:2})">
+                +2 POINTS
+            </button>
+            <button type="button" class="action-btn btn-hr" onclick="sendAction('run_plus', {team:'batting', points:3})">
+                +3 POINTS
+            </button>
+            <button type="button" class="action-btn btn-out" onclick="sendAction('flip_half')">
+                ADVANCE PERIOD
+            </button>
+        </div>
+
         <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
             <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('flip_half')">
-                Switch Half-Inning (Clear Bases)
+                <span id="flip-half-btn-text">Next Period / Inning Half</span>
             </button>
             <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('mark_final')">
                 Mark Game Completed / Final
@@ -474,10 +513,28 @@ function renderState(state) {
     document.getElementById('team2-score').textContent = state.team2_score;
     document.getElementById('team1-hits').textContent = state.team1_hits;
     document.getElementById('team2-hits').textContent = state.team2_hits;
-    document.getElementById('inning-half-label').textContent = state.inning_half_display;
-    document.getElementById('inning-number').textContent = state.current_inning;
-    document.getElementById('outs-display').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
-    document.getElementById('batting-team-badge').textContent = `Batting: ${state.batting_team_name}`;
+
+    const isDiamond = state.is_diamond_sport !== undefined ? state.is_diamond_sport : true;
+    const scoreLabel = state.score_label || 'Pts';
+    const periodLabel = state.period_label || 'Period';
+
+    // Adapt UI for Diamond Sports vs Court/Field Sports
+    document.getElementById('diamond-section').style.display = isDiamond ? 'block' : 'none';
+    document.getElementById('non-diamond-quick-score').style.display = isDiamond ? 'none' : 'block';
+    document.getElementById('outs-container').style.display = isDiamond ? 'inline' : 'none';
+    document.getElementById('diamond-action-grid').style.display = isDiamond ? 'grid' : 'none';
+    document.getElementById('court-action-grid').style.display = isDiamond ? 'none' : 'grid';
+
+    if (isDiamond) {
+        document.getElementById('inning-half-label').textContent = state.inning_half_display;
+        document.getElementById('inning-number').textContent = state.current_inning;
+        document.getElementById('outs-display').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
+        document.getElementById('batting-team-badge').textContent = `At Bat: ${state.batting_team_name}`;
+    } else {
+        document.getElementById('inning-half-label').textContent = periodLabel;
+        document.getElementById('inning-number').textContent = state.current_inning;
+        document.getElementById('batting-team-badge').textContent = `Possession / Serve: ${state.batting_team_name}`;
+    }
 
     document.getElementById('base-1B').classList.toggle('occupied', !!state.runner_on_first);
     document.getElementById('base-2B').classList.toggle('occupied', !!state.runner_on_second);

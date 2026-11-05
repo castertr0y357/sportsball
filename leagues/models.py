@@ -36,7 +36,30 @@ class League(models.Model):
 
     @property
     def is_diamond_sport(self):
+        """Softball and Baseball have innings, outs, base diamonds, and at-bats."""
         return self.sport in ('softball', 'baseball')
+
+    @property
+    def score_label(self):
+        """Dynamic scoring label depending on sport."""
+        if self.sport in ('softball', 'baseball'):
+            return "Runs"
+        elif self.sport in ('soccer',):
+            return "Goals"
+        return "Points"
+
+    @property
+    def period_label(self):
+        """Inning, Quarter, Half, or Set."""
+        if self.sport in ('softball', 'baseball'):
+            return "Inning"
+        elif self.sport in ('basketball', 'flag_football'):
+            return "Quarter / Half"
+        elif self.sport in ('volleyball', 'pickleball'):
+            return "Set / Game"
+        elif self.sport in ('soccer',):
+            return "Half"
+        return "Period"
 
     def __str__(self):
         return f"{self.name} ({self.get_sport_display()})"

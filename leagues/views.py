@@ -606,6 +606,10 @@ def _serialize_game_state(game: Game):
         'play_by_play': game.play_by_play or [],
         'team1_lineup': team1_lineup,
         'team2_lineup': team2_lineup,
+        'is_diamond_sport': game.season.league.is_diamond_sport if game.season and game.season.league else False,
+        'score_label': game.season.league.score_label if game.season and game.season.league else 'Points',
+        'period_label': game.season.league.period_label if game.season and game.season.league else 'Period',
+        'sport': game.season.league.sport if game.season and game.season.league else 'other',
     }
 
 
@@ -785,19 +789,22 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
 
     elif action == 'run_plus':
         team_target = payload.get('team', 'batting')
+        points = int(payload.get('points', 1))
+        label = game.season.league.score_label if (game.season and game.season.league) else 'Pts'
         if team_target == 'team1' or (team_target == 'batting' and batting_team == game.team1):
-            game.team1_score += 1
-            game.log_play(f"+1 Run for {game.team1.name} ({game.team1_score}-{game.team2_score}).")
+            game.team1_score += points
+            game.log_play(f"+{points} {label} for {game.team1.name} ({game.team1_score}-{game.team2_score}).")
         else:
-            game.team2_score += 1
-            game.log_play(f"+1 Run for {game.team2.name} ({game.team1_score}-{game.team2_score}).")
+            game.team2_score += points
+            game.log_play(f"+{points} {label} for {game.team2.name} ({game.team1_score}-{game.team2_score}).")
 
     elif action == 'run_minus':
         team_target = payload.get('team', 'batting')
+        points = int(payload.get('points', 1))
         if team_target == 'team1':
-            game.team1_score = max(0, game.team1_score - 1)
+            game.team1_score = max(0, game.team1_score - points)
         else:
-            game.team2_score = max(0, game.team2_score - 1)
+            game.team2_score = max(0, game.team2_score - points)
 
     elif action == 'toggle_base':
         base = payload.get('base')

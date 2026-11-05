@@ -65,8 +65,11 @@
 <div class="page-header">
     <div>
         <span class="badge badge-success" id="gc-live-badge">LIVE GAMECAST (Auto-Updates Every 3s)</span>
-        <h1>{{ game.team2.name }} at {{ game.team1.name }}</h1>
-        <p style="margin:0; color:var(--text-muted);">{{ game.location }} &bull; {{ game.date|date:"M d, Y g:i A" }}</p>
+        <h1>{{ game.team2.name }} vs {{ game.team1.name }}</h1>
+        <p style="margin:0; color:var(--text-muted);">
+            Sport: <strong>{{ game.season.league.get_sport_display|default:"Fellowship" }}</strong> &bull;
+            {{ game.location }} &bull; {{ game.date|date:"M d, Y g:i A" }}
+        </p>
     </div>
     <div style="display:flex; gap:0.5rem;">
         {% if user.is_authenticated and user.can_record_scores %}
@@ -98,10 +101,12 @@
 
     <div style="text-align:center;">
         <div style="font-size:1.3rem; font-weight:700;">
-            <span id="gc-inning-half">Top</span> <span id="gc-inning">1</span>
-            &bull; <span style="color:#fde68a;" id="gc-outs">0 Outs</span>
+            <span id="gc-period-wrap">
+                <span id="gc-inning-half">Top</span> <span id="gc-inning">1</span>
+            </span>
+            <span id="gc-outs-wrap">&bull; <span style="color:#fde68a;" id="gc-outs">0 Outs</span></span>
         </div>
-        <div class="gc-diamond">
+        <div id="gc-diamond-wrap" class="gc-diamond">
             <div id="gc-base-2B" class="gc-base gc-2b"></div>
             <div id="gc-base-3B" class="gc-base gc-3b"></div>
             <div id="gc-base-1B" class="gc-base gc-1b"></div>
@@ -133,10 +138,23 @@ function updateGameCast(state) {
     document.getElementById('gc-team2-score').textContent = state.team2_score;
     document.getElementById('gc-team1-hits').textContent = state.team1_hits;
     document.getElementById('gc-team2-hits').textContent = state.team2_hits;
-    document.getElementById('gc-inning-half').textContent = state.inning_half_display;
-    document.getElementById('gc-inning').textContent = state.current_inning;
-    document.getElementById('gc-outs').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
-    document.getElementById('gc-batting-team').textContent = `At Bat: ${state.batting_team_name}`;
+
+    const isDiamond = state.is_diamond_sport !== undefined ? state.is_diamond_sport : true;
+    const periodLabel = state.period_label || 'Period';
+
+    document.getElementById('gc-diamond-wrap').style.display = isDiamond ? 'block' : 'none';
+    document.getElementById('gc-outs-wrap').style.display = isDiamond ? 'inline' : 'none';
+
+    if (isDiamond) {
+        document.getElementById('gc-inning-half').textContent = state.inning_half_display;
+        document.getElementById('gc-inning').textContent = state.current_inning;
+        document.getElementById('gc-outs').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
+        document.getElementById('gc-batting-team').textContent = `At Bat: ${state.batting_team_name}`;
+    } else {
+        document.getElementById('gc-inning-half').textContent = periodLabel;
+        document.getElementById('gc-inning').textContent = state.current_inning;
+        document.getElementById('gc-batting-team').textContent = `Possession / Serve: ${state.batting_team_name}`;
+    }
 
     document.getElementById('gc-base-1B').classList.toggle('occupied', !!state.runner_on_first);
     document.getElementById('gc-base-2B').classList.toggle('occupied', !!state.runner_on_second);
