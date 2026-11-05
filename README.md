@@ -59,23 +59,18 @@ SportsBall is an open-source, local-first web platform and Progressive Web App (
 git clone https://github.com/castertr0y357/sportsball.git
 cd sportsball
 
-# Switch to development branch
-git checkout development
-
 # Create virtual environment
 python -m venv venv
-# Windows:
+# On Windows:
 .\venv\Scripts\activate
-# macOS/Linux:
+# On Linux/macOS:
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run migrations
+# Run migrations & seed demo league data
 python manage.py migrate
-
-# Seed demo data (Churches, leagues, sample rosters, and audio clips)
 python manage.py seed_demo_data
 
 # Start local dev server
@@ -88,17 +83,28 @@ Visit `http://localhost:8000/` in your browser.
 ## 🐳 Docker & Kubernetes Deployment
 
 ### Docker Compose
-Run the entire production-ready stack (with Gunicorn, Whitenoise, and persistent volumes) with a single command:
+Run the entire production-ready stack (with PostgreSQL 16, Gunicorn, Whitenoise, and persistent volumes) with a single command:
 ```bash
 docker compose up --build
 ```
 
-### Environment Variables
+### Database & Environment Variables
+SportsBall automatically connects to a **PostgreSQL** instance whenever `DATABASE_URL` or `POSTGRES_HOST`/`DB_HOST` is supplied, falling back to SQLite for zero-config local development.
+
 | Variable | Description | Default |
 | :--- | :--- | :--- |
+| `DATABASE_URL` | Standard connection string (e.g., `postgresql://user:pass@host:5432/dbname`) | Optional (takes precedence) |
+| `POSTGRES_HOST` / `DB_HOST` | Hostname or K8s Service of your PostgreSQL instance | `""` (defaults to local SQLite if unset) |
+| `POSTGRES_DB` / `DB_NAME` | PostgreSQL database name | `sportsball` |
+| `POSTGRES_USER` / `DB_USER` | PostgreSQL username | `sportsball` |
+| `POSTGRES_PASSWORD` / `DB_PASSWORD` | PostgreSQL password | `""` |
+| `POSTGRES_PORT` / `DB_PORT` | PostgreSQL port | `5432` |
 | `DJANGO_DEBUG` | Enable debug mode (`True` / `False`) | `False` |
 | `DJANGO_SECRET_KEY` | Unique Django secret key | Pre-configured dev fallback |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated allowed hosts | `localhost,127.0.0.1` |
+| `DJANGO_SUPERUSER_USERNAME` | Auto-creates admin on K8s container startup | `""` |
+| `DJANGO_SUPERUSER_PASSWORD` | Auto-creates admin password on startup | `""` |
+| `DJANGO_SUPERUSER_EMAIL` | Admin email address | `admin@sportsball.local` |
 | `EMAIL_HOST_USER` | Gmail address for sending emails | `""` (falls back to console) |
 | `EMAIL_HOST_PASSWORD` | Google 16-character App Password | `""` |
 | `TWILIO_ACCOUNT_SID` | Optional Twilio SID for SMS alerts | `""` |

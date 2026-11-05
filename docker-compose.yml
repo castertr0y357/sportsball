@@ -13,11 +13,36 @@ services:
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_PASSWORD=adminpass
       - DJANGO_SUPERUSER_EMAIL=admin@sportsball.local
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=sportsball
+      - POSTGRES_USER=sportsball
+      - POSTGRES_PASSWORD=sportsballpass
+      - POSTGRES_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - app_data:/app/data
       - app_media:/app/media
     restart: unless-stopped
 
+  db:
+    image: postgres:16-alpine
+    container_name: sportsball-db
+    environment:
+      - POSTGRES_DB=sportsball
+      - POSTGRES_USER=sportsball
+      - POSTGRES_PASSWORD=sportsballpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sportsball -d sportsball"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
-  app_data:
+  pgdata:
   app_media:

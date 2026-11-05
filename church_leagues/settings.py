@@ -58,12 +58,54 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'church_leagues.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration: PostgreSQL when DATABASE_URL or DB_HOST/POSTGRES_HOST is set,
+# falling back to SQLite for local development and CI testing.
+db_url = os.environ.get('DATABASE_URL')
+db_host = os.environ.get('DB_HOST') or os.environ.get('POSTGRES_HOST')
+
+if db_url:
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.parse(
+                db_url,
+                conn_max_age=int(os.environ.get('DB_CONN_MAX_AGE', 600)),
+                conn_health_checks=True,
+            )
+        }
+    except ImportError:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(db_url)
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': parsed.path.lstrip('/'),
+                'USER': parsed.username or '',
+                'PASSWORD': parsed.password or '',
+                'HOST': parsed.hostname or '',
+                'PORT': str(parsed.port or 5432),
+                'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 600)),
+            }
+        }
+elif db_host:
+    DATABASES = {
+        'default': {
+            'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'),
+            'NAME': os.environ.get('DB_NAME') or os.environ.get('POSTGRES_DB', 'sportsball'),
+            'USER': os.environ.get('DB_USER') or os.environ.get('POSTGRES_USER', 'sportsball'),
+            'PASSWORD': os.environ.get('DB_PASSWORD') or os.environ.get('POSTGRES_PASSWORD', ''),
+            'HOST': db_host,
+            'PORT': str(os.environ.get('DB_PORT') or os.environ.get('POSTGRES_PORT', '5432')),
+            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 600)),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {
