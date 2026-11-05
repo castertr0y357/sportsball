@@ -27,9 +27,15 @@
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
             {% if active_seasons %}
                 {% with s=active_seasons.first %}
+                    {% if upcoming_games.first %}
                     <a href="{% url 'dugout_console' upcoming_games.first.id %}" class="btn btn-sm btn-accent" style="font-weight:700;">
                         ⚾ Open Dugout Scoreboard
                     </a>
+                    {% else %}
+                    <a href="{% url 'practice_sandbox' %}" class="btn btn-sm btn-accent" style="font-weight:700;">
+                        ⚾ Open Practice Scoreboard
+                    </a>
+                    {% endif %}
                     <a href="{% url 'season_detail' s.id %}" class="btn btn-sm btn-secondary">
                         Roster &amp; Attendance Check-In
                     </a>
