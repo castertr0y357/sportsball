@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Practice Sandbox | SportsBall{% endblock %}
+
+{% block content %}
+<style>
+  .practice-badge-bar {
+    background: #065f46;
+    color: #ecfdf5;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    margin-bottom: 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .clock-box {
+    background: #0f172a;
+    border: 2px solid #334155;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius);
+    text-align: center;
+    color: #fff;
+    min-width: 140px;
+  }
+  .clock-digits {
+    font-size: 2.2rem;
+    font-weight: 800;
+    font-family: monospace;
+    letter-spacing: 2px;
+    color: #38bdf8;
+  }
+  .clock-digits.urgent {
+    color: #ef4444;
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+</style>
+
+<div class="practice-badge-bar">
+    <div>
+        <strong>&#127918; PRACTICE &amp; TRAINING SANDBOX (Zero Risk / No Official Records)</strong>
+        <p style="margin:0.2rem 0 0; font-size:0.85rem;">
+            Test buttons, try walk-up songs, advance runners, test the 25s play clock or 7s QB rush timer without touching official league standings!
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <label for="practice-sport" style="margin:0; font-size:0.85rem;">Sport:</label>
+        <select id="practice-sport" onchange="window.location.href='?sport='+this.value" style="width:auto; padding:0.25rem 0.5rem;">
+            {% for s_val, s_label in sports %}
+                <option value="{{ s_val }}" {% if selected_sport == s_val %}selected{% endif %}>{{ s_label }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="resetPracticeGame()">&#8635; Reset Practice</button>
+    </div>
+</div>
+
+<!-- Dynamic Game Clock & Secondary Clocks (Flag Football / Basketball / Softball) -->
+<div id="clocks-panel" class="card" style="margin-bottom:1.25rem; background:#1e293b; color:#fff; border:none;">
+    <div style="display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap; gap:1rem;">
+        
+        <!-- Master Period Countdown Clock (if enabled) -->
+        <div id="master-clock-wrap" style="text-align:center;">
+            <small style="color:#94a3b8; font-weight:700; text-transform:uppercase;" id="period-clock-title">Period Game Clock</small>
+            <div class="clock-digits" id="master-clock-display">20:00</div>
+            <div style="display:flex; gap:0.35rem; justify-content:center; margin-top:0.35rem;">
+                <button type="button" class="btn btn-sm btn-accent" id="btn-clock-toggle" onclick="toggleMasterClock()">&#9654; Start</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="adjustMasterClock(60)">+1m</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="adjustMasterClock(-60)">-1m</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="resetMasterClock()">Reset</button>
+            </div>
+        </div>
+
+        <!-- Flag Football 25s Play Clock + 7s QB Rush Clock -->
+        <div id="football-clocks-wrap" style="display:none; text-align:center;">
+            <small style="color:#fde68a; font-weight:700; text-transform:uppercase;">Flag Football Timers</small>
+            <div style="display:flex; gap:0.75rem; justify-content:center; margin-top:0.25rem;">
+                <div class="clock-box" style="min-width:110px;">
+                    <small style="color:#94a3b8; display:block;">Snap Play Clock</small>
+                    <div class="clock-digits" id="play-clock-display" style="font-size:1.8rem; color:#f59e0b;">25</div>
+                    <div style="display:flex; gap:0.25rem; justify-content:center; margin-top:0.2rem;">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="startPlayClock(25)">25s</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="startPlayClock(40)">40s</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="stopPlayClock()">Stop</button>
+                    </div>
+                </div>
+
+                <div class="clock-box" style="min-width:110px;">
+                    <small style="color:#94a3b8; display:block;">QB Rush / Pass Timer</small>
+                    <div class="clock-digits" id="qb-clock-display" style="font-size:1.8rem; color:#10b981;">7.0</div>
+                    <div style="display:flex; gap:0.25rem; justify-content:center; margin-top:0.2rem;">
+                        <button type="button" class="btn btn-sm btn-accent" onclick="startQBClock(7)">7s QB</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="stopQBClock()">Stop</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeout 30s/60s Clock -->
+        <div id="timeout-clock-wrap" style="text-align:center;">
+            <small style="color:#94a3b8; font-weight:700; text-transform:uppercase;">Timeout Timer</small>
+            <div class="clock-digits" id="timeout-display" style="color:#a78bfa; font-size:1.8rem;">00</div>
+            <div style="display:flex; gap:0.35rem; justify-content:center; margin-top:0.35rem;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="startTimeout(30)">30s</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="startTimeout(60)">60s</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="stopTimeout()">Clear</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Standard Scoreboard & Action Pad (Reuses console layout cleanly) -->
+<div class="grid grid-2" style="margin-bottom:1.5rem;">
+    <!-- Scoreboard and Batter Status -->
+    <div class="card" style="background:#0f172a; color:#fff;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div>
+                <small style="color:#94a3b8;">AWAY</small>
+                <h3 style="margin:0; font-size:1.3rem;">Grace Lions</h3>
+                <div style="font-size:2.4rem; font-weight:800; color:#fbbf24;" id="p-score-away">0</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-size:1.1rem; font-weight:700;">
+                    <span id="p-period-label">Top</span> <span id="p-period-num">1</span>
+                </div>
+                <div id="p-outs-wrap" style="color:#fde68a; font-weight:700;">0 Outs</div>
+            </div>
+            <div style="text-align:right;">
+                <small style="color:#94a3b8;">HOME</small>
+                <h3 style="margin:0; font-size:1.3rem;">Calvary Sluggers</h3>
+                <div style="font-size:2.4rem; font-weight:800; color:#fbbf24;" id="p-score-home">0</div>
+            </div>
+        </div>
+
+        <!-- Diamond for Softball/Baseball -->
+        <div id="p-diamond-wrap" style="position:relative; width:140px; height:140px; margin:0 auto 1rem;">
+            <div id="p-base-2B" class="base-btn" style="position:absolute; top:8px; left:46px; width:44px; height:44px; transform:rotate(45deg); cursor:pointer;" onclick="togglePracticeBase('2B')"><span>2B</span></div>
+            <div id="p-base-3B" class="base-btn" style="position:absolute; top:46px; left:8px; width:44px; height:44px; transform:rotate(45deg); cursor:pointer;" onclick="togglePracticeBase('3B')"><span>3B</span></div>
+            <div id="p-base-1B" class="base-btn" style="position:absolute; top:46px; right:8px; width:44px; height:44px; transform:rotate(45deg); cursor:pointer;" onclick="togglePracticeBase('1B')"><span>1B</span></div>
+            <div style="position:absolute; bottom:8px; left:50px; width:36px; height:36px; background:#e2e8f0; clip-path:polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);"></div>
+        </div>
+
+        <div style="background:#1e293b; padding:0.75rem 1rem; border-radius:var(--radius);">
+            <small style="color:#94a3b8;">CURRENT BATTER / SERVER / ROTATION</small>
+            <div style="font-size:1.25rem; font-weight:800;" id="p-current-batter">#3 Micah Thompson</div>
+            <small style="color:#fde68a;" id="p-current-song">&#9835; Strike Up the Band</small>
+            <div style="margin-top:0.4rem; display:flex; gap:0.4rem;">
+                <button type="button" class="btn btn-sm btn-accent" onclick="playPracticeChime()">&#9654; Test Walk-Up Audio</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="stopPracticeChime()">Stop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Practice 1-Tap Action Pad -->
+    <div class="card">
+        <h2>1-Tap Practice Action Pad</h2>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0;">
+            Try tapping any outcome button below to see how scores, outs, runners, and songs automatically trigger!
+        </p>
+
+        <!-- Diamond Buttons -->
+        <div id="p-diamond-actions" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+            <button type="button" class="btn btn-accent" style="grid-column: span 2; font-size:1.1rem; padding:0.85rem;" onclick="practiceNextBatter()">
+                &#9654; NEXT BATTER (Auto-Walk-Up)
+            </button>
+            <button type="button" class="btn" style="background:#16a34a;" onclick="practiceHit()">BASE HIT (1B)</button>
+            <button type="button" class="btn" style="background:#0d9488;" onclick="practiceWalk()">WALK / BB</button>
+            <button type="button" class="btn" style="background:#d97706;" onclick="practiceHomeRun()">HOME RUN!</button>
+            <button type="button" class="btn" style="background:#dc2626;" onclick="practiceOut()">+1 OUT</button>
+        </div>
+
+        <!-- Court / Field Buttons -->
+        <div id="p-court-actions" style="display:none; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+            <button type="button" class="btn btn-accent" style="grid-column: span 2; font-size:1.1rem; padding:0.85rem;" onclick="practiceNextBatter()">
+                &#9654; NEXT ROTATION / SERVER
+            </button>
+            <button type="button" class="btn" style="background:#16a34a;" onclick="practiceScore(1)">+1 POINT</button>
+            <button type="button" class="btn" style="background:#0d9488;" onclick="practiceScore(2)">+2 POINTS</button>
+            <button type="button" class="btn" style="background:#d97706;" onclick="practiceScore(3)">+3 POINTS</button>
+            <button type="button" class="btn" style="background:#dc2626;" onclick="practicePeriodFlip()">END PERIOD</button>
+        </div>
+
+        <div style="margin-top:1.25rem;">
+            <h3>Live Sandbox Log</h3>
+            <ul id="p-log-list" style="margin:0; padding-left:1.1rem; max-height:160px; overflow-y:auto; font-size:0.88rem;"></ul>
+        </div>
+    </div>
+</div>
+
+<script>
+let state = {{ initial_state_json|safe }};
+
+// --- Web Audio Synthesizer (Zero asset dependencies for practice chimes and buzzers) ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let buzzerOsc = null;
+
+function playSynthBuzzer(freq = 240, duration = 1.0) {
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+}
+
+function playPracticeChime() {
+    try {
+        [261.63, 329.63, 392.00, 523.25].forEach((f, idx) => {
+            setTimeout(() => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(f, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            }, idx * 120);
+        });
+    } catch(e) {}
+}
+
+function stopPracticeChime() {}
+
+// --- Clock Logic ---
+let masterSeconds = state.clock_seconds_remaining || 1200;
+let masterRunning = false;
+let masterInterval = null;
+
+let playSeconds = 25;
+let playInterval = null;
+
+let qbSeconds = 7.0;
+let qbInterval = null;
+
+let timeoutSeconds = 0;
+let timeoutInterval = null;
+
+function formatClock(totalSec) {
+    const m = Math.floor(totalSec / 60);
+    const s = Math.floor(totalSec % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function toggleMasterClock() {
+    masterRunning = !masterRunning;
+    const btn = document.getElementById('btn-clock-toggle');
+    if (masterRunning) {
+        btn.textContent = '⏸ Pause';
+        btn.className = 'btn btn-sm btn-secondary';
+        masterInterval = setInterval(() => {
+            if (masterSeconds > 0) {
+                masterSeconds--;
+                updateClockUI();
+            } else {
+                toggleMasterClock();
+                playSynthBuzzer(180, 1.5);
+                logPractice("🚨 PERIOD OVER! (Game clock reached 00:00)");
+            }
+        }, 1000);
+    } else {
+        btn.textContent = '▶ Start';
+        btn.className = 'btn btn-sm btn-accent';
+        clearInterval(masterInterval);
+    }
+}
+
+function adjustMasterClock(delta) {
+    masterSeconds = Math.max(0, masterSeconds + delta);
+    updateClockUI();
+}
+
+function resetMasterClock() {
+    if (masterRunning) toggleMasterClock();
+    masterSeconds = (state.default_period_minutes || 20) * 60;
+    updateClockUI();
+}
+
+function startPlayClock(sec = 25) {
+    clearInterval(playInterval);
+    playSeconds = sec;
+    const el = document.getElementById('play-clock-display');
+    el.textContent = playSeconds;
+    el.classList.remove('urgent');
+    playInterval = setInterval(() => {
+        if (playSeconds > 0) {
+            playSeconds--;
+            el.textContent = playSeconds;
+            if (playSeconds <= 5) el.classList.add('urgent');
+        } else {
+            clearInterval(playInterval);
+            playSynthBuzzer(440, 0.8);
+            logPractice("⏱ PLAY CLOCK VIOLATION! (Delay of Game)");
+        }
+    }, 1000);
+}
+
+function stopPlayClock() {
+    clearInterval(playInterval);
+    const el = document.getElementById('play-clock-display');
+    el.classList.remove('urgent');
+}
+
+function startQBClock(sec = 7) {
+    clearInterval(qbInterval);
+    qbSeconds = sec;
+    const el = document.getElementById('qb-clock-display');
+    el.textContent = qbSeconds.toFixed(1);
+    el.classList.remove('urgent');
+    qbInterval = setInterval(() => {
+        if (qbSeconds > 0.1) {
+            qbSeconds = +(qbSeconds - 0.1).toFixed(1);
+            el.textContent = qbSeconds.toFixed(1);
+            if (qbSeconds <= 2.0) el.classList.add('urgent');
+        } else {
+            clearInterval(qbInterval);
+            el.textContent = "0.0";
+            playSynthBuzzer(300, 0.8);
+            logPractice("⚡ QB 7s RUSH CLOCK EXPIRED! (Ball dead / Sack)");
+        }
+    }, 100);
+}
+
+function stopQBClock() {
+    clearInterval(qbInterval);
+    document.getElementById('qb-clock-display').classList.remove('urgent');
+}
+
+function startTimeout(sec) {
+    clearInterval(timeoutInterval);
+    timeoutSeconds = sec;
+    const el = document.getElementById('timeout-display');
+    el.textContent = timeoutSeconds;
+    timeoutInterval = setInterval(() => {
+        if (timeoutSeconds > 0) {
+            timeoutSeconds--;
+            el.textContent = timeoutSeconds;
+        } else {
+            clearInterval(timeoutInterval);
+            playSynthBuzzer(520, 0.8);
+            logPractice("📣 TIMEOUT OVER! Teams break huddle.");
+        }
+    }, 1000);
+}
+
+function stopTimeout() {
+    clearInterval(timeoutInterval);
+    document.getElementById('timeout-display').textContent = '00';
+}
+
+function updateClockUI() {
+    document.getElementById('master-clock-display').textContent = formatClock(masterSeconds);
+}
+
+// --- Practice Actions ---
+function logPractice(msg) {
+    const ul = document.getElementById('p-log-list');
+    const li = document.createElement('li');
+    li.textContent = msg;
+    li.style.marginBottom = '0.35rem';
+    ul.insertBefore(li, ul.firstChild);
+}
+
+function renderPracticeState() {
+    document.getElementById('p-score-home').textContent = state.team1_score;
+    document.getElementById('p-score-away').textContent = state.team2_score;
+
+    const isDiamond = state.is_diamond_sport;
+    document.getElementById('p-diamond-wrap').style.display = isDiamond ? 'block' : 'none';
+    document.getElementById('p-outs-wrap').style.display = isDiamond ? 'block' : 'none';
+    document.getElementById('p-diamond-actions').style.display = isDiamond ? 'grid' : 'none';
+    document.getElementById('p-court-actions').style.display = isDiamond ? 'none' : 'grid';
+
+    // Clocks visibility
+    document.getElementById('master-clock-wrap').style.display = state.enable_game_clock ? 'block' : 'none';
+    document.getElementById('football-clocks-wrap').style.display = state.enable_flag_football_clocks ? 'block' : 'none';
+
+    if (isDiamond) {
+        document.getElementById('p-period-label').textContent = state.inning_half_display;
+        document.getElementById('p-period-num').textContent = state.current_inning;
+        document.getElementById('p-outs-wrap').textContent = `${state.outs} Outs`;
+    } else {
+        document.getElementById('p-period-label').textContent = state.period_label;
+        document.getElementById('p-period-num').textContent = state.current_inning;
+        document.getElementById('p-outs-wrap').textContent = '';
+    }
+
+    if (isDiamond) {
+        document.getElementById('p-base-1B').classList.toggle('occupied', !!state.runner_on_first);
+        document.getElementById('p-base-2B').classList.toggle('occupied', !!state.runner_on_second);
+        document.getElementById('p-base-3B').classList.toggle('occupied', !!state.runner_on_third);
+    }
+
+    if (state.current_batter) {
+        document.getElementById('p-current-batter').textContent = `#${state.current_batter.jersey_number} ${state.current_batter.name}`;
+        document.getElementById('p-current-song').textContent = `Walk-Up: ${state.current_batter.walkup_song_title || 'None'}`;
+    }
+}
+
+function practiceNextBatter() {
+    playPracticeChime();
+    logPractice("▶ Next batter stepped up! Walk-up fanfare triggered.");
+}
+
+function practiceHit() {
+    state.team2_hits += 1;
+    if (state.runner_on_third) {
+        state.team2_score += 1;
+        state.runner_on_third = false;
+        logPractice("BASE HIT! Runner on 3B scored (+1 Run).");
+    } else {
+        logPractice("BASE HIT! Runner advances to 1B.");
+    }
+    if (state.runner_on_second) { state.runner_on_third = true; state.runner_on_second = false; }
+    if (state.runner_on_first) state.runner_on_second = true;
+    state.runner_on_first = true;
+    playPracticeChime();
+    renderPracticeState();
+}
+
+function practiceWalk() {
+    state.runner_on_first = true;
+    logPractice("WALK (BB)! Batter takes first base.");
+    playPracticeChime();
+    renderPracticeState();
+}
+
+function practiceHomeRun() {
+    const runners = (state.runner_on_first ? 1 : 0) + (state.runner_on_second ? 1 : 0) + (state.runner_on_third ? 1 : 0);
+    const runs = runners + 1;
+    state.team2_score += runs;
+    state.team2_hits += 1;
+    state.runner_on_first = false;
+    state.runner_on_second = false;
+    state.runner_on_third = false;
+    logPractice(`💥 HOME RUN! ${runs} runs scored!`);
+    playPracticeChime();
+    renderPracticeState();
+}
+
+function practiceOut() {
+    state.outs += 1;
+    if (state.outs >= 3) {
+        state.outs = 0;
+        state.runner_on_first = false;
+        state.runner_on_second = false;
+        state.runner_on_third = false;
+        state.inning_half = state.inning_half === 'top' ? 'bottom' : 'top';
+        state.inning_half_display = state.inning_half === 'top' ? 'Top' : 'Bottom';
+        if (state.inning_half === 'top') state.current_inning++;
+        logPractice(`3RD OUT! Switched to ${state.inning_half_display} of Inning ${state.current_inning}. Bases cleared.`);
+    } else {
+        logPractice(`OUT recorded (${state.outs} out).`);
+    }
+    playPracticeChime();
+    renderPracticeState();
+}
+
+function practiceScore(pts) {
+    state.team1_score += pts;
+    logPractice(`+${pts} Points scored by Home team!`);
+    renderPracticeState();
+}
+
+function practicePeriodFlip() {
+    state.current_inning += 1;
+    logPractice(`Period advanced to ${state.period_label} ${state.current_inning}.`);
+    renderPracticeState();
+}
+
+function togglePracticeBase(base) {
+    if (base === '1B') state.runner_on_first = !state.runner_on_first;
+    if (base === '2B') state.runner_on_second = !state.runner_on_second;
+    if (base === '3B') state.runner_on_third = !state.runner_on_third;
+    logPractice(`Toggled base runner on ${base}.`);
+    renderPracticeState();
+}
+
+function resetPracticeGame() {
+    state.team1_score = 0;
+    state.team2_score = 0;
+    state.team1_hits = 0;
+    state.team2_hits = 0;
+    state.outs = 0;
+    state.current_inning = 1;
+    state.runner_on_first = false;
+    state.runner_on_second = false;
+    state.runner_on_third = false;
+    logPractice("Practice game reset to 0-0.");
+    renderPracticeState();
+}
+
+// Initial mount
+renderPracticeState();
+updateClockUI();
+</script>
+{% endblock %}

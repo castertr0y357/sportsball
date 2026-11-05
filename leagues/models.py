@@ -24,6 +24,27 @@ class League(models.Model):
         blank=True,
         help_text="Discord Webhook URL for league-wide score & rainout announcements"
     )
+    # Clock toggles & settings
+    enable_game_clock = models.BooleanField(
+        default=False,
+        help_text="Show master game/period countdown clock (typically True for basketball/football/soccer)"
+    )
+    default_period_minutes = models.PositiveIntegerField(
+        default=20,
+        help_text="Minutes per half/quarter/period (e.g., 20 for basketball/football)"
+    )
+    enable_flag_football_clocks = models.BooleanField(
+        default=False,
+        help_text="Enable Flag Football 25s play clock and QB 7s pass/rush countdown"
+    )
+    enable_time_limit_clock = models.BooleanField(
+        default=False,
+        help_text="Optional overall game limit countdown (e.g. 55-min softball limit)"
+    )
+    enable_timeout_clock = models.BooleanField(
+        default=True,
+        help_text="Enable 1-tap 30s/60s timeout countdown timer"
+    )
     admin = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -327,6 +348,11 @@ class Game(models.Model):
     result = models.JSONField(blank=True, null=True)
     stats = models.JSONField(blank=True, null=True)
     notes = models.TextField(blank=True)
+
+    # Master Clock live state (synced with GameCast)
+    clock_seconds_remaining = models.IntegerField(default=1200)
+    clock_running = models.BooleanField(default=False)
+    clock_last_started_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['date', 'id']

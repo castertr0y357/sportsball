@@ -27,4 +27,6 @@ urlpatterns = [
     path('games/<int:game_id>/console/sync/', views.dugout_batch_sync, name='dugout_batch_sync'),
     path('games/<int:game_id>/gamecast/', views.gamecast, name='gamecast'),
     path('games/<int:game_id>/live-state/', views.game_live_state, name='game_live_state'),
+    # Zero-consequences Practice & Training Sandbox
+    path('practice-sandbox/', views.practice_sandbox, name='practice_sandbox'),
 ]

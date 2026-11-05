@@ -610,6 +610,14 @@ def _serialize_game_state(game: Game):
         'score_label': game.season.league.score_label if game.season and game.season.league else 'Points',
         'period_label': game.season.league.period_label if game.season and game.season.league else 'Period',
         'sport': game.season.league.sport if game.season and game.season.league else 'other',
+        # Clock configurations
+        'enable_game_clock': game.season.league.enable_game_clock if game.season and game.season.league else False,
+        'default_period_minutes': game.season.league.default_period_minutes if game.season and game.season.league else 20,
+        'enable_flag_football_clocks': game.season.league.enable_flag_football_clocks if game.season and game.season.league else False,
+        'enable_time_limit_clock': game.season.league.enable_time_limit_clock if game.season and game.season.league else False,
+        'enable_timeout_clock': game.season.league.enable_timeout_clock if game.season and game.season.league else True,
+        'clock_seconds_remaining': game.clock_seconds_remaining,
+        'clock_running': game.clock_running,
     }
 
 
@@ -829,6 +837,13 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
         trigger_walkup = True
         game.log_play(f"Half-inning advanced to {'Top' if game.inning_half == 'top' else 'Bottom'} {game.current_inning}.")
 
+    elif action == 'clock_update':
+        if 'remaining' in payload:
+            game.clock_seconds_remaining = int(payload['remaining'])
+        if 'running' in payload:
+            game.clock_running = bool(payload['running'])
+            game.clock_last_started_at = timezone.now() if game.clock_running else None
+
     elif action == 'mark_final':
         game.status = 'completed'
         game.log_play(f"FINAL SCORE: {game.team1.name} {game.team1_score}, {game.team2.name} {game.team2_score}")
@@ -924,4 +939,193 @@ def gamecast(request, game_id):
     return render(request, 'leagues/gamecast.html', {
         'game': game,
         'initial_state_json': json.dumps(state),
+    })
+
+
+def practice_sandbox(request):
+    """
+    Practice & Training Sandbox:
+    Interactive practice game allowing volunteers, coaches, and umpires to test
+    all controls, clocks, walk-up songs, and scoring with zero consequences to official stats.
+    """
+    sport = request.GET.get('sport', 'softball')
+
+    is_diamond = sport in ('softball', 'baseball')
+    score_label = 'Runs' if is_diamond else ('Goals' if sport == 'soccer' else 'Points')
+    period_label = 'Inning' if is_diamond else ('Quarter' if sport in ('basketball', 'flag_football') else 'Set')
+
+    team1_name = "Grace Fellowship (Home)"
+    team2_name = "Calvary Lions (Away)"
+
+    team1_lineup = [
+        {'entry_id': 101, 'order': 1, 'player_id': 1, 'name': 'Josh Peterson', 'jersey': 12, 'is_present': True, 'walkup_title': 'Awesome God (Brass Riff)'},
+        {'entry_id': 102, 'order': 2, 'player_id': 2, 'name': 'Caleb Brooks', 'jersey': 34, 'is_present': True, 'walkup_title': 'Victory Fanfare'},
+        {'entry_id': 103, 'order': 3, 'player_id': 3, 'name': 'Paul Andrews', 'jersey': 99, 'is_present': True, 'walkup_title': 'Organ Charge'},
+        {'entry_id': 104, 'order': 4, 'player_id': 4, 'name': 'Mike Taylor', 'jersey': 8, 'is_present': True, 'walkup_title': 'Centerfield'},
+    ]
+    team2_lineup = [
+        {'entry_id': 201, 'order': 1, 'player_id': 11, 'name': 'Micah Thompson', 'jersey': 3, 'is_present': True, 'walkup_title': 'Strike Up the Band'},
+        {'entry_id': 202, 'order': 2, 'player_id': 12, 'name': 'David Miller', 'jersey': 23, 'is_present': True, 'walkup_title': 'Eye of the Tiger'},
+        {'entry_id': 203, 'order': 3, 'player_id': 13, 'name': 'Sam Wilson', 'jersey': 17, 'is_present': True, 'walkup_title': 'Grand Slam'},
+        {'entry_id': 204, 'order': 4, 'player_id': 14, 'name': 'Luke Vance', 'jersey': 11, 'is_present': True, 'walkup_title': 'Chariots of Fire'},
+    ]
+
+    initial_state = {
+        'game_id': 99999,
+        'status': 'practice',
+        'status_display': 'Practice Sandbox Mode',
+        'team1_name': team1_name,
+        'team2_name': team2_name,
+        'team1_score': 0,
+        'team2_score': 0,
+        'team1_hits': 0,
+        'team2_hits': 0,
+        'current_inning': 1,
+        'inning_half': 'top',
+        'inning_half_display': 'Top',
+        'batting_team_name': team2_name,
+        'outs': 0,
+        'runner_on_first': False,
+        'runner_on_second': False,
+        'runner_on_third': False,
+        'current_batter': {
+            'id': 11,
+            'name': 'Micah Thompson',
+            'jersey_number': 3,
+            'walkup_song_title': 'Strike Up the Band',
+            'walkup_song_url': '',
+            'walkup_start_seconds': 0,
+            'walkup_duration_seconds': 8,
+        },
+        'on_deck_batter': {
+            'id': 12,
+            'name': 'David Miller',
+            'jersey_number': 23,
+            'walkup_song_title': 'Eye of the Tiger',
+            'walkup_song_url': '',
+            'walkup_start_seconds': 0,
+            'walkup_duration_seconds': 8,
+        },
+        'play_by_play': [
+            "Welcome to the Practice Sandbox! None of your taps here will affect official league standings or records."
+        ],
+        'team1_lineup': team1_lineup,
+        'team2_lineup': team2_lineup,
+        'is_diamond_sport': is_diamond,
+        'score_label': score_label,
+        'period_label': period_label,
+        'sport': sport,
+        'enable_game_clock': sport in ('basketball', 'flag_football', 'soccer'),
+        'default_period_minutes': 20 if sport in ('basketball', 'flag_football') else 45,
+        'enable_flag_football_clocks': (sport == 'flag_football'),
+        'enable_time_limit_clock': (sport in ('softball', 'baseball')),
+        'enable_timeout_clock': True,
+        'clock_seconds_remaining': 1200,
+        'clock_running': False,
+    }
+
+    return render(request, 'leagues/practice_sandbox.html', {
+        'initial_state_json': json.dumps(initial_state),
+        'selected_sport': sport,
+        'sports': League.SPORT_CHOICES,
+    })
+    """Public mobile-friendly Live GameCast scoreboard & diamond view for parents and spectators."""
+    game = get_object_or_404(
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
+        id=game_id
+    )
+    game.ensure_lineups_initialized()
+    state = _serialize_game_state(game)
+    return render(request, 'leagues/gamecast.html', {
+        'game': game,
+        'initial_state_json': json.dumps(state),
+    })
+
+
+def practice_sandbox(request):
+    """
+    Practice & Training Sandbox:
+    Interactive practice game allowing volunteers, coaches, and umpires to test
+    all controls, clocks, walk-up songs, and scoring with zero consequences to official stats.
+    """
+    sport = request.GET.get('sport', 'softball')
+
+    is_diamond = sport in ('softball', 'baseball')
+    score_label = 'Runs' if is_diamond else ('Goals' if sport == 'soccer' else 'Points')
+    period_label = 'Inning' if is_diamond else ('Quarter' if sport in ('basketball', 'flag_football') else 'Set')
+
+    team1_name = "Grace Fellowship (Home)"
+    team2_name = "Calvary Lions (Away)"
+
+    team1_lineup = [
+        {'entry_id': 101, 'order': 1, 'player_id': 1, 'name': 'Josh Peterson', 'jersey': 12, 'is_present': True, 'walkup_title': 'Awesome God (Brass Riff)'},
+        {'entry_id': 102, 'order': 2, 'player_id': 2, 'name': 'Caleb Brooks', 'jersey': 34, 'is_present': True, 'walkup_title': 'Victory Fanfare'},
+        {'entry_id': 103, 'order': 3, 'player_id': 3, 'name': 'Paul Andrews', 'jersey': 99, 'is_present': True, 'walkup_title': 'Organ Charge'},
+        {'entry_id': 104, 'order': 4, 'player_id': 4, 'name': 'Mike Taylor', 'jersey': 8, 'is_present': True, 'walkup_title': 'Centerfield'},
+    ]
+    team2_lineup = [
+        {'entry_id': 201, 'order': 1, 'player_id': 11, 'name': 'Micah Thompson', 'jersey': 3, 'is_present': True, 'walkup_title': 'Strike Up the Band'},
+        {'entry_id': 202, 'order': 2, 'player_id': 12, 'name': 'David Miller', 'jersey': 23, 'is_present': True, 'walkup_title': 'Eye of the Tiger'},
+        {'entry_id': 203, 'order': 3, 'player_id': 13, 'name': 'Sam Wilson', 'jersey': 17, 'is_present': True, 'walkup_title': 'Grand Slam'},
+        {'entry_id': 204, 'order': 4, 'player_id': 14, 'name': 'Luke Vance', 'jersey': 11, 'is_present': True, 'walkup_title': 'Chariots of Fire'},
+    ]
+
+    initial_state = {
+        'game_id': 99999,
+        'status': 'practice',
+        'status_display': 'Practice Sandbox Mode',
+        'team1_name': team1_name,
+        'team2_name': team2_name,
+        'team1_score': 0,
+        'team2_score': 0,
+        'team1_hits': 0,
+        'team2_hits': 0,
+        'current_inning': 1,
+        'inning_half': 'top',
+        'inning_half_display': 'Top',
+        'batting_team_name': team2_name,
+        'outs': 0,
+        'runner_on_first': False,
+        'runner_on_second': False,
+        'runner_on_third': False,
+        'current_batter': {
+            'id': 11,
+            'name': 'Micah Thompson',
+            'jersey_number': 3,
+            'walkup_song_title': 'Strike Up the Band',
+            'walkup_song_url': '',
+            'walkup_start_seconds': 0,
+            'walkup_duration_seconds': 8,
+        },
+        'on_deck_batter': {
+            'id': 12,
+            'name': 'David Miller',
+            'jersey_number': 23,
+            'walkup_song_title': 'Eye of the Tiger',
+            'walkup_song_url': '',
+            'walkup_start_seconds': 0,
+            'walkup_duration_seconds': 8,
+        },
+        'play_by_play': [
+            "Welcome to the Practice Sandbox! None of your taps here will affect official league standings or records."
+        ],
+        'team1_lineup': team1_lineup,
+        'team2_lineup': team2_lineup,
+        'is_diamond_sport': is_diamond,
+        'score_label': score_label,
+        'period_label': period_label,
+        'sport': sport,
+        'enable_game_clock': sport in ('basketball', 'flag_football', 'soccer'),
+        'default_period_minutes': 20 if sport in ('basketball', 'flag_football') else 45,
+        'enable_flag_football_clocks': (sport == 'flag_football'),
+        'enable_time_limit_clock': (sport in ('softball', 'baseball')),
+        'enable_timeout_clock': True,
+        'clock_seconds_remaining': 1200,
+        'clock_running': False,
+    }
+
+    return render(request, 'leagues/practice_sandbox.html', {
+        'initial_state_json': json.dumps(initial_state),
+        'selected_sport': sport,
+        'sports': League.SPORT_CHOICES,
     })
