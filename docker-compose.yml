@@ -10,6 +10,9 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-container-secret-key-change-in-production
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_PASSWORD=adminpass
+      - DJANGO_SUPERUSER_EMAIL=admin@sportsball.local
     volumes:
       - app_data:/app/data
       - app_media:/app/media
