@@ -410,49 +410,145 @@ function renderPracticeState() {
     }
 }
 
+function advancePracticeBatter() {
+    const isTop = state.inning_half === 'top';
+    const lineup = (isTop ? state.team2_lineup : state.team1_lineup) || [];
+    if (!lineup.length) return;
+
+    let currentIdx = -1;
+    if (state.current_batter) {
+        currentIdx = lineup.findIndex(p => p.player_id === state.current_batter.id || p.name === state.current_batter.name);
+    }
+    const nextIdx = (currentIdx + 1) % lineup.length;
+    const nextPlayer = lineup[nextIdx];
+
+    state.current_batter = {
+        id: nextPlayer.player_id,
+        name: nextPlayer.name,
+        jersey_number: nextPlayer.jersey,
+        walkup_song_title: nextPlayer.walkup_title || '',
+        walkup_song_url: '',
+        walkup_duration_seconds: 8,
+    };
+
+    const onDeckIdx = (nextIdx + 1) % lineup.length;
+    const onDeckPlayer = lineup[onDeckIdx];
+    state.on_deck_batter = {
+        id: onDeckPlayer.player_id,
+        name: onDeckPlayer.name,
+        jersey_number: onDeckPlayer.jersey,
+        walkup_song_title: onDeckPlayer.walkup_title || '',
+        walkup_song_url: '',
+        walkup_duration_seconds: 8,
+    };
+}
+
+function switchInningHalfBatter() {
+    const isTop = state.inning_half === 'top';
+    const lineup = (isTop ? state.team2_lineup : state.team1_lineup) || [];
+    if (!lineup.length) return;
+    state.current_batter = {
+        id: lineup[0].player_id,
+        name: lineup[0].name,
+        jersey_number: lineup[0].jersey,
+        walkup_song_title: lineup[0].walkup_title || '',
+        walkup_song_url: '',
+        walkup_duration_seconds: 8,
+    };
+    if (lineup.length > 1) {
+        state.on_deck_batter = {
+            id: lineup[1].player_id,
+            name: lineup[1].name,
+            jersey_number: lineup[1].jersey,
+            walkup_song_title: lineup[1].walkup_title || '',
+            walkup_song_url: '',
+            walkup_duration_seconds: 8,
+        };
+    }
+}
+
 function practiceNextBatter() {
+    advancePracticeBatter();
     playPracticeChime();
-    logPractice("▶ Next batter stepped up! Walk-up fanfare triggered.");
+    logPractice(`▶ Next batter: #${state.current_batter.jersey_number} ${state.current_batter.name} stepped up! Walk-up fanfare triggered.`);
+    renderPracticeState();
 }
 
 function practiceHit() {
-    state.team2_hits += 1;
+    const isTop = state.inning_half === 'top';
+    const hitKey = isTop ? 'team2_hits' : 'team1_hits';
+    const scoreKey = isTop ? 'team2_score' : 'team1_score';
+    state[hitKey] += 1;
+
+    const batterName = state.current_batter ? state.current_batter.name : 'Batter';
+    let scored = false;
     if (state.runner_on_third) {
-        state.team2_score += 1;
+        state[scoreKey] += 1;
         state.runner_on_third = false;
-        logPractice("BASE HIT! Runner on 3B scored (+1 Run).");
-    } else {
-        logPractice("BASE HIT! Runner advances to 1B.");
+        scored = true;
     }
     if (state.runner_on_second) { state.runner_on_third = true; state.runner_on_second = false; }
     if (state.runner_on_first) state.runner_on_second = true;
     state.runner_on_first = true;
+
+    if (scored) {
+        logPractice(`BASE HIT by ${batterName}! Runner on 3B scored (+1 Run).`);
+    } else {
+        logPractice(`BASE HIT by ${batterName}! Runner advances to 1B.`);
+    }
+
+    advancePracticeBatter();
     playPracticeChime();
     renderPracticeState();
 }
 
 function practiceWalk() {
+    const isTop = state.inning_half === 'top';
+    const scoreKey = isTop ? 'team2_score' : 'team1_score';
+    const batterName = state.current_batter ? state.current_batter.name : 'Batter';
+
+    if (state.runner_on_first && state.runner_on_second && state.runner_on_third) {
+        state[scoreKey] += 1;
+        logPractice(`WALK (BB) for ${batterName}! Bases-loaded walk forced in a run (+1 Run).`);
+    } else if (state.runner_on_first && state.runner_on_second) {
+        state.runner_on_third = true;
+        logPractice(`WALK (BB) for ${batterName}! Runners forced to 2B and 3B.`);
+    } else if (state.runner_on_first) {
+        state.runner_on_second = true;
+        logPractice(`WALK (BB) for ${batterName}! Runner on 1B forced to 2B.`);
+    } else {
+        logPractice(`WALK (BB) for ${batterName}! Batter takes 1B.`);
+    }
     state.runner_on_first = true;
-    logPractice("WALK (BB)! Batter takes first base.");
+
+    advancePracticeBatter();
     playPracticeChime();
     renderPracticeState();
 }
 
 function practiceHomeRun() {
+    const isTop = state.inning_half === 'top';
+    const hitKey = isTop ? 'team2_hits' : 'team1_hits';
+    const scoreKey = isTop ? 'team2_score' : 'team1_score';
+    const batterName = state.current_batter ? state.current_batter.name : 'Batter';
+
     const runners = (state.runner_on_first ? 1 : 0) + (state.runner_on_second ? 1 : 0) + (state.runner_on_third ? 1 : 0);
     const runs = runners + 1;
-    state.team2_score += runs;
-    state.team2_hits += 1;
+    state[scoreKey] += runs;
+    state[hitKey] += 1;
     state.runner_on_first = false;
     state.runner_on_second = false;
     state.runner_on_third = false;
-    logPractice(`💥 HOME RUN! ${runs} runs scored!`);
+    logPractice(`💥 HOME RUN by ${batterName}! ${runs} run(s) scored!`);
+
+    advancePracticeBatter();
     playPracticeChime();
     renderPracticeState();
 }
 
 function practiceOut() {
     state.outs += 1;
+    const outBatter = state.current_batter ? state.current_batter.name : 'Batter';
     if (state.outs >= 3) {
         state.outs = 0;
         state.runner_on_first = false;
@@ -461,9 +557,11 @@ function practiceOut() {
         state.inning_half = state.inning_half === 'top' ? 'bottom' : 'top';
         state.inning_half_display = state.inning_half === 'top' ? 'Top' : 'Bottom';
         if (state.inning_half === 'top') state.current_inning++;
-        logPractice(`3RD OUT! Switched to ${state.inning_half_display} of Inning ${state.current_inning}. Bases cleared.`);
+        logPractice(`3RD OUT! (${outBatter} out). Switched to ${state.inning_half_display} of Inning ${state.current_inning}. Bases cleared.`);
+        switchInningHalfBatter();
     } else {
-        logPractice(`OUT recorded (${state.outs} out).`);
+        logPractice(`OUT recorded (${outBatter} out — ${state.outs} out).`);
+        advancePracticeBatter();
     }
     playPracticeChime();
     renderPracticeState();
@@ -496,9 +594,12 @@ function resetPracticeGame() {
     state.team2_hits = 0;
     state.outs = 0;
     state.current_inning = 1;
+    state.inning_half = 'top';
+    state.inning_half_display = 'Top';
     state.runner_on_first = false;
     state.runner_on_second = false;
     state.runner_on_third = false;
+    switchInningHalfBatter();
     logPractice("Practice game reset to 0-0.");
     renderPracticeState();
 }
