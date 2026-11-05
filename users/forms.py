@@ -64,7 +64,7 @@ class WaiverSignatureForm(forms.Form):
                 match_found = True
                 break
 
-        if not match_found and (self.user.first_name or self.user.last_name):
+        if not match_found:
             expected = self.user.get_full_name() or self.user.username
             raise forms.ValidationError(
                 f"Signature mismatch. Please type your registered full name: '{expected}'"

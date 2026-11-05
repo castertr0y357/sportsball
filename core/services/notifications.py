@@ -1,6 +1,14 @@
+import json
 import logging
-import requests
+import urllib.request
+import urllib.error
+import base64
 from django.conf import settings
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +36,28 @@ def send_discord_notification(webhook_url: str, title: str, description: str, fi
         ]
     }
 
-    try:
-        resp = requests.post(webhook_url, json=payload, timeout=4)
-        return resp.status_code in (200, 204)
-    except Exception as e:
-        logger.warning(f"Failed to deliver Discord webhook: {e}")
-        return False
+    if requests is not None:
+        try:
+            resp = requests.post(webhook_url, json=payload, timeout=4)
+            return resp.status_code in (200, 204)
+        except Exception as e:
+            logger.warning(f"Failed to deliver Discord webhook: {e}")
+            return False
+    else:
+        try:
+            req = urllib.request.Request(
+                webhook_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'SportsBall-Bot/1.0'
+                }
+            )
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                return resp.status in (200, 204)
+        except Exception as e:
+            logger.warning(f"Failed to deliver Discord webhook via urllib: {e}")
+            return False
 
 
 def send_twilio_sms(to_phone: str, body: str):
@@ -49,15 +73,38 @@ def send_twilio_sms(to_phone: str, body: str):
         return False
 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-    data = {
-        'From': from_number,
-        'To': to_phone,
-        'Body': f"[SportsBall] {body}"
-    }
 
-    try:
-        resp = requests.post(url, data=data, auth=(sid, token), timeout=5)
-        return resp.status_code in (200, 201)
-    except Exception as e:
-        logger.warning(f"Failed to deliver SMS to {to_phone}: {e}")
-        return False
+    if requests is not None:
+        data = {
+            'From': from_number,
+            'To': to_phone,
+            'Body': f"[SportsBall] {body}"
+        }
+        try:
+            resp = requests.post(url, data=data, auth=(sid, token), timeout=5)
+            return resp.status_code in (200, 201)
+        except Exception as e:
+            logger.warning(f"Failed to deliver SMS to {to_phone}: {e}")
+            return False
+    else:
+        import urllib.parse
+        data = urllib.parse.urlencode({
+            'From': from_number,
+            'To': to_phone,
+            'Body': f"[SportsBall] {body}"
+        }).encode('utf-8')
+        auth_str = base64.b64encode(f"{sid}:{token}".encode('ascii')).decode('ascii')
+        try:
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    'Authorization': f'Basic {auth_str}',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status in (200, 201)
+        except Exception as e:
+            logger.warning(f"Failed to deliver SMS to {to_phone} via urllib: {e}")
+            return False
