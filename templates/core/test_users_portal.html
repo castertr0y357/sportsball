@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Testing &amp; Demo Sandbox | SportsBall{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <span class="badge badge-warning">Kubernetes &amp; Local Test Hub</span>
+        <h1>Testing &amp; Role Sandbox</h1>
+        <p style="margin:0.25rem 0 0; color:var(--text-muted);">
+            Create test users, switch roles with 1 click, or re-seed leagues directly from your web browser &mdash; zero terminal commands required.
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <form method="post" action="{% url 'reset_all_demo_data' %}" onsubmit="return confirm('Reset all demo leagues, teams, games, and accounts?');" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary btn-sm">&#8635; Re-Seed All Demo Data</button>
+        </form>
+        <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">&larr; Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom:1.5rem;">
+    <!-- 1-Click Role Switcher Catalog -->
+    <div class="card">
+        <h2>⚡ 1-Click Role Switcher</h2>
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-top:0;">
+            Click <strong>"Log In As"</strong> to instantly assume that persona and test their specific screens and permissions.
+        </p>
+        <div style="display:grid; gap:0.75rem;">
+            {% for item in catalog %}
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-alt); padding:0.75rem 1rem; border-radius:var(--radius); border:1px solid var(--border);">
+                    <div>
+                        <div style="font-weight:700; font-size:1rem;">
+                            {{ item.name }}
+                            <span class="badge {{ item.badge }}">{{ item.role }}</span>
+                            {% if user.is_authenticated and user.username == item.username %}
+                                <span class="badge badge-success">&#10003; ACTIVE SESSION</span>
+                            {% endif %}
+                        </div>
+                        <small style="color:var(--text-muted); display:block; margin-top:0.2rem;">
+                            Username: <code>{{ item.username }}</code> &bull; {{ item.desc }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if item.exists %}
+                            <form method="post" action="{% url 'quick_switch_test_user' item.username %}" style="margin:0;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm {% if user.username == item.username %}btn-secondary{% else %}btn-accent{% endif %}">
+                                    Log In As &rarr;
+                                </button>
+                            </form>
+                        {% else %}
+                            <span class="badge badge-warning">Not Created</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Create Custom Test User In-App Form -->
+    <div class="card">
+        <h2>+ Add Custom Test User In-App</h2>
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-top:0;">
+            Spawn any player, coach, or umpire on the fly without needing email confirmation.
+        </p>
+        <form method="post" action="{% url 'create_in_app_test_user' %}">
+            {% csrf_token %}
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                <p>
+                    <label for="id_username">Username *</label>
+                    <input type="text" id="id_username" name="username" placeholder="e.g. coach_mike" required>
+                </p>
+                <p>
+                    <label for="id_role">Role *</label>
+                    <select id="id_role" name="role">
+                        {% for val, label in roles %}
+                            <option value="{{ val }}" {% if val == 'player' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                <p>
+                    <label for="id_first_name">First Name</label>
+                    <input type="text" id="id_first_name" name="first_name" placeholder="Mike">
+                </p>
+                <p>
+                    <label for="id_last_name">Last Name</label>
+                    <input type="text" id="id_last_name" name="last_name" placeholder="Taylor">
+                </p>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:0.75rem;">
+                <p>
+                    <label for="id_church">Home Church</label>
+                    <select id="id_church" name="church_id">
+                        <option value="">None / Visiting</option>
+                        {% for ch in churches %}
+                            <option value="{{ ch.id }}">{{ ch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </p>
+                <p>
+                    <label for="id_jersey">Jersey #</label>
+                    <input type="number" id="id_jersey" name="jersey_number" placeholder="24">
+                </p>
+            </div>
+
+            <p>
+                <label for="id_walkup">Walk-Up Song Title</label>
+                <input type="text" id="id_walkup" name="walkup_song_title" placeholder="e.g. Centerfield - John Fogerty">
+            </p>
+
+            <div style="margin:0.75rem 0; display:flex; flex-direction:column; gap:0.4rem;">
+                <label style="display:flex; align-items:center; gap:0.5rem; font-weight:normal; cursor:pointer;">
+                    <input type="checkbox" name="sign_waiver" checked style="width:auto;">
+                    Pre-sign liability waiver (verified)
+                </label>
+                <label style="display:flex; align-items:center; gap:0.5rem; font-weight:normal; cursor:pointer;">
+                    <input type="checkbox" name="is_free_agent" style="width:auto;">
+                    Register as Free Agent looking for team
+                </label>
+                <label style="display:flex; align-items:center; gap:0.5rem; font-weight:normal; cursor:pointer;">
+                    <input type="checkbox" name="auto_login" checked style="width:auto;">
+                    Immediately log in as this user after creating
+                </label>
+            </div>
+
+            <button type="submit" class="btn" style="width:100%; margin-top:0.5rem;">
+                Create Test User In-App
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

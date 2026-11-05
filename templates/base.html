@@ -20,6 +20,7 @@
                 <a href="{% url 'church_list' %}">Church Directory</a>
                 <a href="{% url 'free_agent_list' %}">Free Agents</a>
                 <a href="{% url 'announcement_list' %}">Announcements</a>
+                <a href="{% url 'test_users_portal' %}" style="color:#fde68a;">&#9881; Testing Sandbox</a>
                 {% if user.is_authenticated %}
                     <a href="{% url 'profile' %}">{{ user.display_name }} ({{ user.get_role_display }})</a>
                     <form action="{% url 'logout' %}" method="post" style="display:inline; margin:0;">
