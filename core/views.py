@@ -4,6 +4,7 @@ from django.contrib import messages
 from .models import Church, Announcement
 from .forms import ChurchForm, AnnouncementForm
 from leagues.models import League, Season, Game
+from core.services.notifications import send_discord_notification, send_twilio_sms
 
 
 def home(request):
@@ -83,6 +84,23 @@ def create_announcement(request):
             announcement = form.save(commit=False)
             announcement.author = request.user
             announcement.save()
+
+            # Automatic Discord Webhook & Optional SMS Notification
+            webhook = ''
+            if announcement.season and announcement.season.discord_webhook_url:
+                webhook = announcement.season.discord_webhook_url
+            elif announcement.league and announcement.league.discord_webhook_url:
+                webhook = announcement.league.discord_webhook_url
+
+            if webhook:
+                color = 0xdc2626 if announcement.is_urgent else 0x1e3a8a
+                send_discord_notification(
+                    webhook_url=webhook,
+                    title=f"[{announcement.get_category_display()}] {announcement.title}",
+                    description=announcement.content,
+                    color=color
+                )
+
             messages.success(request, f"Announcement '{announcement.title}' published.")
             return redirect('announcement_list')
     else:

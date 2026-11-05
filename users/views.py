@@ -88,13 +88,14 @@ def edit_profile(request):
 @login_required
 def sign_waiver(request):
     if request.method == 'POST':
-        form = WaiverSignatureForm(request.POST)
+        form = WaiverSignatureForm(request.POST, user=request.user)
         if form.is_valid():
             request.user.sign_waiver(form.cleaned_data['signature'])
-            messages.success(request, "Thank you! Your liability waiver and sportsmanship covenant have been signed.")
+            messages.success(request, "Thank you! Your liability waiver and sportsmanship covenant have been certified.")
             return redirect('profile')
     else:
-        form = WaiverSignatureForm(initial={'signature': request.user.display_name})
+        initial_name = request.user.get_full_name() or request.user.username
+        form = WaiverSignatureForm(user=request.user, initial={'signature': initial_name})
     return render(request, 'users/sign_waiver.html', {'form': form})
 
 

@@ -5,7 +5,7 @@ from .models import League, Season, Team, SeasonRegistration, Game
 class LeagueForm(forms.ModelForm):
     class Meta:
         model = League
-        fields = ['name', 'sport', 'description', 'rules', 'admin']
+        fields = ['name', 'sport', 'description', 'rules', 'discord_webhook_url', 'admin']
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
             'rules': forms.Textarea(attrs={'rows': 4}),
@@ -18,6 +18,7 @@ class SeasonForm(forms.ModelForm):
         fields = [
             'name', 'start_date', 'end_date', 'current',
             'registration_open', 'registration_fee', 'max_roster_size',
+            'discord_webhook_url', 'venmo_handle', 'cashapp_handle', 'paypal_link',
         ]
         widgets = {
             'start_date': forms.DateInput(attrs={'type': 'date'}),

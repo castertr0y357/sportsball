@@ -20,6 +20,10 @@ class League(models.Model):
     sport = models.CharField(max_length=30, choices=SPORT_CHOICES, default='basketball')
     description = models.TextField()
     rules = models.TextField(blank=True, help_text="League rules, sportsmanship covenant, and game format")
+    discord_webhook_url = models.URLField(
+        blank=True,
+        help_text="Discord Webhook URL for league-wide score & rainout announcements"
+    )
     admin = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -47,6 +51,24 @@ class Season(models.Model):
     registration_open = models.BooleanField(default=True)
     registration_fee = models.DecimalField(max_digits=6, decimal_places=2, default=0.00)
     max_roster_size = models.PositiveIntegerField(default=15)
+    discord_webhook_url = models.URLField(
+        blank=True,
+        help_text="Discord Webhook URL for this specific season"
+    )
+    venmo_handle = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="Venmo username for dues (e.g. @GraceChurchSports)"
+    )
+    cashapp_handle = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="CashApp handle for dues (e.g. $GraceLeague)"
+    )
+    paypal_link = models.URLField(
+        blank=True,
+        help_text="Direct PayPal.me link (e.g. https://paypal.me/gracechurch)"
+    )
 
     class Meta:
         ordering = ['-current', '-start_date']

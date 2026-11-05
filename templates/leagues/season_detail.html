@@ -27,6 +27,34 @@
     </div>
 </div>
 
+{% if season.venmo_handle or season.cashapp_handle or season.paypal_link %}
+<div class="card" style="margin-bottom:1.5rem; background:#f0fdf4; border:1px solid #bbf7d0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <h3 style="margin:0 0 0.25rem; color:#166534;">💳 Season Dues &amp; Payment Options (${{ season.registration_fee }})</h3>
+            <p style="margin:0; font-size:0.88rem; color:#15803d;">Pay directly via your preferred payment app &mdash; please put player name and team in the note!</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            {% if season.venmo_handle %}
+                <a href="https://venmo.com/{{ season.venmo_handle|cut:'@' }}" target="_blank" rel="noopener" class="btn btn-sm" style="background:#008CFF;">
+                    Venmo ({{ season.venmo_handle }}) &nearr;
+                </a>
+            {% endif %}
+            {% if season.cashapp_handle %}
+                <a href="https://cash.app/{{ season.cashapp_handle }}" target="_blank" rel="noopener" class="btn btn-sm" style="background:#00D632; color:#000;">
+                    CashApp ({{ season.cashapp_handle }}) &nearr;
+                </a>
+            {% endif %}
+            {% if season.paypal_link %}
+                <a href="{{ season.paypal_link }}" target="_blank" rel="noopener" class="btn btn-sm" style="background:#003087;">
+                    PayPal &nearr;
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:1.5rem;">
     <h2>Season Standings</h2>
     {% if standings %}

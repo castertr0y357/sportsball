@@ -35,9 +35,38 @@ class WaiverSignatureForm(forms.Form):
     signature = forms.CharField(
         max_length=150,
         label="Type your full legal name as your electronic signature",
-        help_text="By signing, you agree to the Church Sports League fellowship covenant and liability release."
+        help_text="Your typed signature must match your profile name (or username) to verify identity."
     )
     agree = forms.BooleanField(
         required=True,
         label="I have read and agree to the Liability Waiver & Christian Sportsmanship Covenant"
     )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_signature(self):
+        sig = self.cleaned_data.get('signature', '').strip()
+        if not self.user:
+            return sig
+
+        allowed_names = [self.user.username.strip().lower()]
+        full_name = self.user.get_full_name().strip().lower()
+        if full_name:
+            allowed_names.append(full_name)
+
+        sig_lower = sig.lower()
+        # Ensure user didn't type gibberish or a mismatched name
+        match_found = False
+        for allowed in allowed_names:
+            if sig_lower == allowed or sig_lower == f"{self.user.first_name.lower()} {self.user.last_name.lower()}".strip():
+                match_found = True
+                break
+
+        if not match_found and (self.user.first_name or self.user.last_name):
+            expected = self.user.get_full_name() or self.user.username
+            raise forms.ValidationError(
+                f"Signature mismatch. Please type your registered full name: '{expected}'"
+            )
+        return sig

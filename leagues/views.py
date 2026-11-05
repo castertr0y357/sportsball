@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.db.models import F
 from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry
+from core.services.notifications import send_discord_notification, send_twilio_sms
 from .forms import (
     LeagueForm, SeasonForm, TeamForm, SeasonRegistrationForm,
     GameForm, GameScoreForm, ScheduleGeneratorForm
@@ -15,7 +16,6 @@ from stats.models import PlayerGameStat, SPORT_DEFAULT_CATEGORIES
 from stats.forms import PlayerGameStatForm
 
 
-@login_required
 def league_list(request):
     leagues = League.objects.select_related('admin').prefetch_related('seasons').all()
     return render(request, 'leagues/league_list.html', {'leagues': leagues})
@@ -37,7 +37,6 @@ def create_league(request):
     return render(request, 'leagues/create_league.html', {'form': form})
 
 
-@login_required
 def season_list(request, league_id):
     league = get_object_or_404(League, id=league_id)
     seasons = Season.objects.filter(league=league).prefetch_related('teams', 'games')
@@ -63,7 +62,6 @@ def create_season(request, league_id):
     return render(request, 'leagues/create_season.html', {'form': form, 'league': league})
 
 
-@login_required
 def season_detail(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
     standings = season.get_standings()
@@ -86,7 +84,6 @@ def season_detail(request, season_id):
     })
 
 
-@login_required
 def team_list(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
     teams = Team.objects.filter(season=season).select_related('church', 'captain').prefetch_related('players')
@@ -122,7 +119,6 @@ def create_team(request, season_id):
     return render(request, 'leagues/create_team.html', {'form': form, 'season': season})
 
 
-@login_required
 def team_detail(request, team_id):
     team = get_object_or_404(
         Team.objects.select_related('league', 'season', 'church', 'captain').prefetch_related('players'),
@@ -445,7 +441,6 @@ def advance_playoffs_to_final(request, season_id):
     return redirect('playoff_bracket', season_id=season.id)
 
 
-@login_required
 def playoff_bracket(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
     standings = season.get_standings()
@@ -467,7 +462,6 @@ def playoff_bracket(request, season_id):
     })
 
 
-@login_required
 def game_detail(request, game_id):
     game = get_object_or_404(
         Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
@@ -831,6 +825,17 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
     elif action == 'mark_final':
         game.status = 'completed'
         game.log_play(f"FINAL SCORE: {game.team1.name} {game.team1_score}, {game.team2.name} {game.team2_score}")
+
+        # Dispatch Discord Webhook for Game Final
+        webhook = (game.season.discord_webhook_url if game.season else '') or (game.season.league.discord_webhook_url if game.season and game.season.league else '')
+        if webhook:
+            winner_str = f"Winner: {game.winner.name}" if game.winner else "Result: Tie"
+            send_discord_notification(
+                webhook_url=webhook,
+                title=f"Final Score: {game.team1.name} vs {game.team2.name}",
+                description=f"**{game.team1.name} {game.team1_score}**  —  **{game.team2_score} {game.team2.name}**\n{winner_str}",
+                color=0x15803d
+            )
 
     elif action == 'toggle_attendance':
         entry_id = payload.get('entry_id')

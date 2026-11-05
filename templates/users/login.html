@@ -5,7 +5,7 @@
 <div class="card" style="max-width:450px; margin:2rem auto; text-align:center;">
     <h1 style="margin-bottom:0.25rem;">&#9918; SportsBall</h1>
     <p style="color:var(--text-muted); font-size:0.95rem; margin-top:0; margin-bottom:1.5rem;" id="login-tagline">
-        Rec league scorekeeping, minus the headache.
+        Because running a league shouldn't require a master's degree.
     </p>
     <div style="text-align:left;">
         <form method="post">
@@ -15,6 +15,7 @@
         </form>
     </div>
     <p style="margin-top:1.25rem; font-size:0.9rem;">
+        <a href="{% url 'password_reset' %}">Forgot your password?</a> &bull;
         Don't have an account yet? <a href="{% url 'register' %}">Create an account</a>
     </p>
 </div>

@@ -97,14 +97,25 @@ class ChurchSportsLeaguesTestSuite(TestCase):
     def test_waiver_signing_and_profile(self):
         self.client.login(username="player_user", password="password123")
         self.assertFalse(self.player_user.waiver_signed)
-        resp = self.client.post(reverse('sign_waiver'), {
-            'signature': 'Player One',
+
+        # 1. Anti-Garbage Test: mismatched signature name should be rejected
+        resp_bad = self.client.post(reverse('sign_waiver'), {
+            'signature': 'Garbage Asdf Name',
             'agree': True,
         })
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp_bad.status_code, 200)
+        self.player_user.refresh_from_db()
+        self.assertFalse(self.player_user.waiver_signed)
+
+        # 2. Legitimate matching signature succeeds
+        resp_good = self.client.post(reverse('sign_waiver'), {
+            'signature': 'player_user',
+            'agree': True,
+        })
+        self.assertEqual(resp_good.status_code, 302)
         self.player_user.refresh_from_db()
         self.assertTrue(self.player_user.waiver_signed)
-        self.assertEqual(self.player_user.waiver_signature, 'Player One')
+        self.assertEqual(self.player_user.waiver_signature, 'player_user')
 
     def test_create_team_view_works_for_coach_and_blocks_player(self):
         # Player should be redirected and blocked
@@ -311,12 +322,21 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(resp_state.json()['inning_half'], 'bottom')
 
     def test_pwa_manifest_and_offline_batch_sync(self):
-        # 1. PWA ServiceWorker and Manifest route checks
+        # 1. PWA ServiceWorker route check
         resp_sw = self.client.get('/sw.js')
         self.assertEqual(resp_sw.status_code, 200)
         self.assertIn('csl-dugout-v1', resp_sw.content.decode('utf-8'))
 
-        # 2. Batch Sync Endpoint test
+        # 2. Public No-Login Browsing Verification
+        self.client.logout()
+        resp_public_season = self.client.get(reverse('season_detail', args=[self.season.id]))
+        self.assertEqual(resp_public_season.status_code, 200)
+        self.assertContains(resp_public_season, "Season Standings")
+
+        resp_public_leagues = self.client.get(reverse('league_list'))
+        self.assertEqual(resp_public_leagues.status_code, 200)
+
+        # 3. Batch Sync Endpoint test
         game = Game.objects.create(
             season=self.season,
             team1=self.team1,
