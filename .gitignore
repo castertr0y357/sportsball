@@ -7,6 +7,7 @@ __pycache__/
 venv/
 .venv/
 env/
+ENV/
 db.sqlite3
 db.sqlite3-journal
 staticfiles/
@@ -15,3 +16,12 @@ media/
 *.log
 .DS_Store
 Thumbs.db
+
+# IDE & Editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Antigravity artifacts
+.gemini/
