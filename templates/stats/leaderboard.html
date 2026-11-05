@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Stat Leaderboards | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>League Statistical Leaderboards</h1>
+        <p style="margin:0; color:var(--text-muted);">Top individual performers across seasons and stat categories</p>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <form method="get" style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:220px;">
+            <label for="season-select">Season</label>
+            <select id="season-select" name="season" onchange="this.form.submit()">
+                {% for s in seasons %}
+                    <option value="{{ s.id }}" {% if selected_season and selected_season.id == s.id %}selected{% endif %}>
+                        {{ s.league.name }} &mdash; {{ s.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex:1; min-width:220px;">
+            <label for="category-select">Stat Category</label>
+            <select id="category-select" name="category" onchange="this.form.submit()">
+                {% for cat in available_categories %}
+                    <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn">Filter Leaders</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>
+        {% if selected_season %}{{ selected_season.name }} &mdash; {% endif %}
+        {{ selected_category|default:"Statistics" }} Leaders
+    </h2>
+    {% if leaders %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Home Church</th>
+                        <th>GP</th>
+                        <th>Total {{ selected_category }}</th>
+                        <th>Per Game Avg</th>
+                        <th>Season High</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in leaders %}
+                    <tr>
+                        <td><strong>#{{ forloop.counter }}</strong></td>
+                        <td>
+                            <a href="{% url 'player_detail' row.player__id %}">
+                                <strong>
+                                    {% if row.player__first_name or row.player__last_name %}
+                                        {{ row.player__first_name }} {{ row.player__last_name }}
+                                    {% else %}
+                                        {{ row.player__username }}
+                                    {% endif %}
+                                </strong>
+                            </a>
+                        </td>
+                        <td>
+                            {% if row.team__id %}
+                                <a href="{% url 'team_detail' row.team__id %}">{{ row.team__name }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ row.player__church__name|default:"-" }}</td>
+                        <td>{{ row.games_played }}</td>
+                        <td><strong>{{ row.total_value }}</strong></td>
+                        <td>{{ row.avg_value|floatformat:1 }}</td>
+                        <td>{{ row.high_value }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No statistics recorded for this category yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

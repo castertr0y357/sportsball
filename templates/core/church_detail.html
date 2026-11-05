@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ church.name }} | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ church.name }}</h1>
+        {% if church.denomination %}<span class="badge badge-primary">{{ church.denomination }}</span>{% endif %}
+    </div>
+    <a href="{% url 'church_list' %}" class="btn btn-secondary">&larr; All Churches</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Congregation &amp; Ministry Info</h2>
+        <p>{{ church.description|default:"Partner congregation in the Church Sports League fellowship." }}</p>
+        <ul style="list-style:none; padding:0;">
+            {% if church.address %}<li><strong>Address:</strong> {{ church.address }}, {{ church.city }} {{ church.state }}</li>{% endif %}
+            {% if church.pastor_or_contact %}<li><strong>Sports Ministry Contact:</strong> {{ church.pastor_or_contact }}</li>{% endif %}
+            {% if church.contact_email %}<li><strong>Email:</strong> {{ church.contact_email }}</li>{% endif %}
+            {% if church.contact_phone %}<li><strong>Phone:</strong> {{ church.contact_phone }}</li>{% endif %}
+            {% if church.website %}<li><strong>Website:</strong> <a href="{{ church.website }}" target="_blank" rel="noopener">{{ church.website }}</a></li>{% endif %}
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Affiliated Teams ({{ teams.count }})</h2>
+        {% if teams %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Team</th>
+                        <th>Season</th>
+                        <th>Captain</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in teams %}
+                    <tr>
+                        <td><a href="{% url 'team_detail' t.id %}"><strong>{{ t.name }}</strong></a></td>
+                        <td><a href="{% url 'season_detail' t.season.id %}">{{ t.season.name }}</a></td>
+                        <td>{{ t.captain.display_name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No teams registered for this church yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

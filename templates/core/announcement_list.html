@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Announcements &amp; Devotionals | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Announcements, Weather Alerts &amp; Devotionals</h1>
+    </div>
+    {% if user.is_authenticated and user.can_manage_teams %}
+        <a href="{% url 'create_announcement' %}" class="btn">+ Post Announcement</a>
+    {% endif %}
+</div>
+
+<div style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <a href="{% url 'announcement_list' %}" class="btn btn-sm {% if not selected_category %}btn-accent{% else %}btn-secondary{% endif %}">All</a>
+    {% for code, label in categories %}
+        <a href="?category={{ code }}" class="btn btn-sm {% if selected_category == code %}btn-accent{% else %}btn-secondary{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
+
+{% for a in announcements %}
+    <div class="card" style="margin-bottom:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <div>
+                {% if a.is_urgent %}<span class="badge badge-danger">URGENT</span>{% endif %}
+                {% if a.is_pinned %}<span class="badge badge-warning">Pinned</span>{% endif %}
+                <span class="badge badge-primary">{{ a.get_category_display }}</span>
+                {% if a.scripture_reference %}<span class="badge">{{ a.scripture_reference }}</span>{% endif %}
+            </div>
+            <small style="color:var(--text-muted);">{{ a.created_at|date:"M d, Y g:i A" }}</small>
+        </div>
+        <h3 style="margin:0.5rem 0;">{{ a.title }}</h3>
+        <p style="margin:0.4rem 0;">{{ a.content }}</p>
+        {% if a.league or a.season %}
+            <small style="color:var(--text-muted);">
+                Posted for: {% if a.league %}{{ a.league.name }}{% endif %}{% if a.season %} &mdash; {{ a.season.name }}{% endif %}
+            </small>
+        {% endif %}
+    </div>
+{% empty %}
+    <div class="card"><p>No announcements found.</p></div>
+{% endfor %}
+{% endblock %}

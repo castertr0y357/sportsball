@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Log In | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:450px; margin:2rem auto;">
+    <h1>Log In</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn" style="width:100%;">Log In</button>
+    </form>
+    <p style="margin-top:1rem; text-align:center;">
+        Don't have an account yet? <a href="{% url 'register' %}">Create an account</a>
+    </p>
+</div>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ profile_user.display_name }} | Player Profile{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ profile_user.display_name }}</h1>
+        <span class="badge badge-primary">{{ profile_user.get_role_display }}</span>
+        {% if profile_user.church %}
+            <a href="{% url 'church_detail' profile_user.church.id %}" class="badge">{{ profile_user.church.name }}</a>
+        {% endif %}
+        {% if profile_user.jersey_number != None %}
+            <span class="badge">#{{ profile_user.jersey_number }}</span>
+        {% endif %}
+        {% if profile_user.waiver_signed %}
+            <span class="badge badge-success">Waiver Signed</span>
+        {% else %}
+            <span class="badge badge-warning">Waiver Unsigned</span>
+        {% endif %}
+        {% if profile_user.is_free_agent %}
+            <span class="badge badge-warning">Free Agent (Looking for Team)</span>
+        {% endif %}
+    </div>
+    {% if user == profile_user %}
+        <div style="display:flex; gap:0.5rem;">
+            <a href="{% url 'edit_profile' %}" class="btn btn-secondary">Edit Profile &amp; Walk-Up Song</a>
+            {% if not profile_user.waiver_signed %}
+                <a href="{% url 'sign_waiver' %}" class="btn btn-accent">Sign Liability Waiver</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Player Bio, Walk-Up Song &amp; Teams</h2>
+        {% if profile_user.bio %}
+            <p>{{ profile_user.bio }}</p>
+        {% endif %}
+
+        <div style="background:var(--surface-alt); padding:0.9rem; border-radius:var(--radius); margin:1rem 0;">
+            <h3 style="margin:0 0 0.4rem;">Ballpark Walk-Up Song</h3>
+            {% if profile_user.walkup_song_title or profile_user.walkup_song_file %}
+                <p style="margin:0 0 0.5rem;">
+                    <strong>{{ profile_user.walkup_song_title|default:"Custom Walk-Up Audio" }}</strong>
+                    <span class="badge badge-primary">Starts @ {{ profile_user.walkup_start_seconds }}s &bull; Plays {{ profile_user.walkup_duration_seconds }}s</span>
+                </p>
+                {% if profile_user.walkup_song_file %}
+                    <audio id="profile-walkup-audio" src="{{ profile_user.walkup_song_file.url }}" preload="metadata"></audio>
+                    <button type="button" class="btn btn-sm btn-accent" onclick="previewProfileWalkup({{ profile_user.walkup_start_seconds }}, {{ profile_user.walkup_duration_seconds }})">
+                        &#9654; Preview Walk-Up Clip
+                    </button>
+                {% endif %}
+            {% else %}
+                <p style="margin:0; color:var(--text-muted);">
+                    No walk-up song uploaded yet.
+                    {% if user == profile_user %}
+                        <a href="{% url 'edit_profile' %}">Upload an MP3/WAV clip</a>
+                    {% endif %}
+                </p>
+            {% endif %}
+        </div>
+
+        <h3>Rostered Teams</h3>
+        {% if teams %}
+            <ul>
+                {% for t in teams %}
+                    <li>
+                        <a href="{% url 'team_detail' t.id %}"><strong>{{ t.name }}</strong></a>
+                        ({{ t.season.name }} &bull; {{ t.league.name }})
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Not currently on a team roster.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Career &amp; Season Statistics</h2>
+        {% if stat_totals %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Stat Category</th>
+                        <th>Games</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in stat_totals %}
+                    <tr>
+                        <td><strong>{{ s.category }}</strong></td>
+                        <td>{{ s.games_count }}</td>
+                        <td><strong>{{ s.total }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No game statistics recorded yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+let previewTimer = null;
+function previewProfileWalkup(startSec, durationSec) {
+    const audio = document.getElementById('profile-walkup-audio');
+    if (!audio) return;
+    if (previewTimer) clearTimeout(previewTimer);
+    audio.currentTime = startSec || 0;
+    audio.volume = 1.0;
+    audio.play();
+    previewTimer = setTimeout(() => {
+        audio.pause();
+    }, (durationSec || 12) * 1000);
+}
+</script>
+{% endblock %}

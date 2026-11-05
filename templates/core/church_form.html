@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Add Partner Church | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px; margin:0 auto;">
+    <h1>Add Partner Church</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn">Save Church</button>
+            <a href="{% url 'church_list' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

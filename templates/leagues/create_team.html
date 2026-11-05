@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Create Team | {{ season.name }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px; margin:0 auto;">
+    <h1>Create Team for {{ season.name }}</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn">Create Team</button>
+            <a href="{% url 'team_list' season.id %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

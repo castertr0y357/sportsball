@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Live GameCast | {{ game.team2.name }} at {{ game.team1.name }}{% endblock %}
+
+{% block content %}
+<style>
+  .gamecast-board {
+    background: #0f172a;
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+    align-items: center;
+  }
+  .gc-team {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e293b;
+    padding: 0.9rem 1.1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 0.65rem;
+  }
+  .gc-score {
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: #fbbf24;
+  }
+  .gc-diamond {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    margin: 0.5rem auto;
+  }
+  .gc-base {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    transform: rotate(45deg);
+    border: 2px solid #64748b;
+    background: #1e293b;
+    border-radius: 4px;
+  }
+  .gc-base.occupied {
+    background: #f59e0b;
+    border-color: #fde68a;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.85);
+  }
+  .gc-2b { top: 8px; left: 55px; }
+  .gc-3b { top: 55px; left: 8px; }
+  .gc-1b { top: 55px; right: 8px; }
+  .gc-home {
+    position: absolute;
+    bottom: 8px;
+    left: 57px;
+    width: 36px;
+    height: 36px;
+    background: #e2e8f0;
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  }
+</style>
+
+<div class="page-header">
+    <div>
+        <span class="badge badge-success" id="gc-live-badge">LIVE GAMECAST (Auto-Updates Every 3s)</span>
+        <h1>{{ game.team2.name }} at {{ game.team1.name }}</h1>
+        <p style="margin:0; color:var(--text-muted);">{{ game.location }} &bull; {{ game.date|date:"M d, Y g:i A" }}</p>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        {% if user.is_authenticated and user.can_record_scores %}
+            <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Dugout Operator Console</a>
+        {% endif %}
+        <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary">Box Score</a>
+    </div>
+</div>
+
+<div class="gamecast-board">
+    <div>
+        <div class="gc-team">
+            <div>
+                <small style="color:#94a3b8;">AWAY</small>
+                <div style="font-size:1.25rem; font-weight:700;">{{ game.team2.name }}</div>
+                <small style="color:#cbd5e1;">Hits: <span id="gc-team2-hits">0</span></small>
+            </div>
+            <span class="gc-score" id="gc-team2-score">0</span>
+        </div>
+        <div class="gc-team" style="margin-bottom:0;">
+            <div>
+                <small style="color:#94a3b8;">HOME</small>
+                <div style="font-size:1.25rem; font-weight:700;">{{ game.team1.name }}</div>
+                <small style="color:#cbd5e1;">Hits: <span id="gc-team1-hits">0</span></small>
+            </div>
+            <span class="gc-score" id="gc-team1-score">0</span>
+        </div>
+    </div>
+
+    <div style="text-align:center;">
+        <div style="font-size:1.3rem; font-weight:700;">
+            <span id="gc-inning-half">Top</span> <span id="gc-inning">1</span>
+            &bull; <span style="color:#fde68a;" id="gc-outs">0 Outs</span>
+        </div>
+        <div class="gc-diamond">
+            <div id="gc-base-2B" class="gc-base gc-2b"></div>
+            <div id="gc-base-3B" class="gc-base gc-3b"></div>
+            <div id="gc-base-1B" class="gc-base gc-1b"></div>
+            <div class="gc-home"></div>
+        </div>
+    </div>
+
+    <div style="background:#1e293b; padding:1.1rem; border-radius:0.5rem;">
+        <span class="badge badge-warning" id="gc-batting-team">Now Batting</span>
+        <div style="font-size:1.4rem; font-weight:800; margin:0.4rem 0;" id="gc-batter-name">--</div>
+        <div style="font-size:0.9rem; color:#fde68a;" id="gc-batter-song"></div>
+        <div style="margin-top:0.65rem; font-size:0.88rem; color:#94a3b8;">
+            On Deck: <strong style="color:#fff;" id="gc-ondeck-name">--</strong>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Live Play-by-Play Feed</h2>
+    <ul id="gc-play-log" style="margin:0; padding-left:1.2rem;"></ul>
+</div>
+
+<script>
+const LIVE_URL = "{% url 'game_live_state' game.id %}";
+let initialData = {{ initial_state_json|safe }};
+
+function updateGameCast(state) {
+    document.getElementById('gc-team1-score').textContent = state.team1_score;
+    document.getElementById('gc-team2-score').textContent = state.team2_score;
+    document.getElementById('gc-team1-hits').textContent = state.team1_hits;
+    document.getElementById('gc-team2-hits').textContent = state.team2_hits;
+    document.getElementById('gc-inning-half').textContent = state.inning_half_display;
+    document.getElementById('gc-inning').textContent = state.current_inning;
+    document.getElementById('gc-outs').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
+    document.getElementById('gc-batting-team').textContent = `At Bat: ${state.batting_team_name}`;
+
+    document.getElementById('gc-base-1B').classList.toggle('occupied', !!state.runner_on_first);
+    document.getElementById('gc-base-2B').classList.toggle('occupied', !!state.runner_on_second);
+    document.getElementById('gc-base-3B').classList.toggle('occupied', !!state.runner_on_third);
+
+    if (state.current_batter) {
+        const j = state.current_batter.jersey_number !== null ? `#${state.current_batter.jersey_number} ` : '';
+        document.getElementById('gc-batter-name').textContent = `${j}${state.current_batter.name}`;
+        document.getElementById('gc-batter-song').textContent = state.current_batter.walkup_song_title
+            ? `Walk-Up Song: ${state.current_batter.walkup_song_title}`
+            : '';
+    } else {
+        document.getElementById('gc-batter-name').textContent = '--';
+        document.getElementById('gc-batter-song').textContent = '';
+    }
+
+    document.getElementById('gc-ondeck-name').textContent = state.on_deck_batter ? state.on_deck_batter.name : '--';
+
+    const logEl = document.getElementById('gc-play-log');
+    if (state.play_by_play && state.play_by_play.length) {
+        logEl.innerHTML = state.play_by_play.map(item => `<li style="margin-bottom:0.4rem;">${item}</li>`).join('');
+    } else {
+        logEl.innerHTML = '<li style="color:var(--text-muted);">Waiting for first pitch...</li>';
+    }
+}
+
+updateGameCast(initialData);
+setInterval(async () => {
+    try {
+        const res = await fetch(LIVE_URL);
+        if (res.ok) {
+            const data = await res.json();
+            updateGameCast(data);
+        }
+    } catch (e) {}
+}, 3000);
+</script>
+{% endblock %}

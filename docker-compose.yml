@@ -1,0 +1,20 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: church_sports_leagues
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-container-secret-key-change-in-production
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
+    volumes:
+      - app_data:/app/data
+      - app_media:/app/media
+    restart: unless-stopped
+
+volumes:
+  app_data:
+  app_media:

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Free Agent Pool | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Free Agent Player Pool</h1>
+        <p style="margin:0; color:var(--text-muted);">Players looking for a church team to join this season</p>
+    </div>
+</div>
+
+<div class="card">
+    {% if free_agents %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        <th>Home Church</th>
+                        <th>Role</th>
+                        <th>Waiver</th>
+                        <th>Bio / Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in free_agents %}
+                    <tr>
+                        <td><a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a></td>
+                        <td>{{ p.church.name|default:"Unlisted / Visiting" }}</td>
+                        <td>{{ p.get_role_display }}</td>
+                        <td>
+                            {% if p.waiver_signed %}
+                                <span class="badge badge-success">Signed</span>
+                            {% else %}
+                                <span class="badge badge-warning">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ p.bio|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No active free agents right now.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Generate Round-Robin Schedule | {{ season.name }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px; margin:0 auto;">
+    <h1>Auto-Generate Round-Robin Schedule</h1>
+    <p style="color:var(--text-muted);">
+        Season: <strong>{{ season.name }}</strong> ({{ team_count }} registered teams)
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn">Generate Full Schedule</button>
+            <a href="{% url 'season_detail' season.id %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

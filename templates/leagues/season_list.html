@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ league.name }} Seasons | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ league.name }} <span class="badge badge-primary">{{ league.get_sport_display }}</span></h1>
+        <p style="margin:0.25rem 0 0; color:var(--text-muted);">{{ league.description }}</p>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <a href="{% url 'league_list' %}" class="btn btn-secondary">&larr; All Leagues</a>
+        {% if user.is_league_admin %}
+            <a href="{% url 'create_season' league.id %}" class="btn">+ Create Season</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if league.rules %}
+    <div class="card" style="margin-bottom:1.25rem;">
+        <h3>League Rules &amp; Sportsmanship Covenant</h3>
+        <p style="margin:0; white-space:pre-line;">{{ league.rules }}</p>
+    </div>
+{% endif %}
+
+<div class="grid grid-2">
+    {% for season in seasons %}
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3><a href="{% url 'season_detail' season.id %}">{{ season.name }}</a></h3>
+                <div>
+                    {% if season.current %}<span class="badge badge-success">Active Season</span>{% endif %}
+                    {% if season.registration_open %}<span class="badge badge-primary">Registration Open</span>{% endif %}
+                </div>
+            </div>
+            <p style="color:var(--text-muted); margin:0.4rem 0;">
+                {{ season.start_date|date:"M d, Y" }} &ndash; {{ season.end_date|date:"M d, Y" }}<br>
+                Registration Fee: ${{ season.registration_fee }} &bull; Max Roster: {{ season.max_roster_size }} players
+            </p>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem;">
+                <a href="{% url 'season_detail' season.id %}" class="btn btn-sm">Standings &amp; Schedule</a>
+                <a href="{% url 'team_list' season.id %}" class="btn btn-sm btn-secondary">Teams ({{ season.teams.count }})</a>
+                <a href="{% url 'playoff_bracket' season.id %}" class="btn btn-sm btn-secondary">Playoff Bracket</a>
+                {% if season.registration_open %}
+                    <a href="{% url 'register_for_season' season.id %}" class="btn btn-sm btn-accent">Register Player</a>
+                {% endif %}
+            </div>
+        </div>
+    {% empty %}
+        <div class="card"><p>No seasons have been created for {{ league.name }} yet.</p></div>
+    {% endfor %}
+</div>
+{% endblock %}

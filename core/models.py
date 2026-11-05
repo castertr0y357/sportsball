@@ -1,0 +1,69 @@
+from django.db import models
+from django.conf import settings
+
+
+class Church(models.Model):
+    name = models.CharField(max_length=150, unique=True)
+    denomination = models.CharField(max_length=100, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=50, blank=True)
+    pastor_or_contact = models.CharField(max_length=120, blank=True, help_text="Primary pastor or sports ministry contact")
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=30, blank=True)
+    website = models.URLField(blank=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "Churches"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Announcement(models.Model):
+    CATEGORY_CHOICES = [
+        ('general', 'General Update'),
+        ('weather', 'Weather / Rainout Alert'),
+        ('schedule', 'Schedule / Gym Change'),
+        ('devotional', 'Weekly Devotional & Prayer'),
+        ('rules', 'Rules & League Policy'),
+    ]
+
+    title = models.CharField(max_length=200)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general')
+    content = models.TextField()
+    scripture_reference = models.CharField(max_length=100, blank=True, help_text="Optional Bible verse reference (e.g., 1 Corinthians 9:24)")
+    league = models.ForeignKey(
+        'leagues.League',
+        on_delete=models.CASCADE,
+        related_name='announcements',
+        null=True,
+        blank=True,
+        help_text="Leave blank for a platform-wide announcement"
+    )
+    season = models.ForeignKey(
+        'leagues.Season',
+        on_delete=models.CASCADE,
+        related_name='announcements',
+        null=True,
+        blank=True,
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='authored_announcements'
+    )
+    is_pinned = models.BooleanField(default=False)
+    is_urgent = models.BooleanField(default=False, help_text="Highlight as an urgent banner (e.g., rainout or cancellation)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_pinned', '-is_urgent', '-created_at']
+
+    def __str__(self):
+        return f"[{self.get_category_display()}] {self.title}"

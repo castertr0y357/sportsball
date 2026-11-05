@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Playoff Bracket &mdash; {{ season.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ season.name }} &mdash; Playoff Bracket</h1>
+        <p style="margin:0; color:var(--text-muted);">Seeded automatically from regular-season standings</p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'season_detail' season.id %}" class="btn btn-secondary">&larr; Season Standings</a>
+        {% if user.is_league_admin %}
+            <form method="post" action="{% url 'generate_playoffs' season.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="btn">Seed / Reset Semifinal Bracket</button>
+            </form>
+            <form method="post" action="{% url 'advance_playoffs_to_final' season.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-accent">Advance Semifinal Winners to Final</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if champion %}
+    <div class="alert alert-success" style="text-align:center; font-size:1.15rem;">
+        <strong>Season Champion: {{ champion.name }}</strong> ({{ champion.church.name|default:"Fellowship League" }})
+    </div>
+{% endif %}
+
+<div class="bracket-columns">
+    <div>
+        <h2>Semifinals</h2>
+        {% for g in semifinals %}
+            <div class="matchup-card">
+                <small style="color:var(--text-muted);">{{ g.date|date:"M d, g:i A" }} &bull; {{ g.location }}</small>
+                <div class="matchup-team {% if g.winner == g.team1 %}matchup-winner{% endif %}">
+                    <span>{% if g.playoff_seed1 %}#{{ g.playoff_seed1 }} {% endif %}{{ g.team1.name }}</span>
+                    <span>{{ g.team1_score }}</span>
+                </div>
+                <div class="matchup-team {% if g.winner == g.team2 %}matchup-winner{% endif %}">
+                    <span>{% if g.playoff_seed2 %}#{{ g.playoff_seed2 }} {% endif %}{{ g.team2.name }}</span>
+                    <span>{{ g.team2_score }}</span>
+                </div>
+                <div style="margin-top:0.5rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span class="badge">{{ g.get_status_display }}</span>
+                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Score / Box Score</a>
+                </div>
+            </div>
+        {% empty %}
+            <div class="card"><p>No semifinal games generated yet.</p></div>
+        {% endfor %}
+    </div>
+
+    <div>
+        <h2>Championship Final &amp; 3rd Place</h2>
+        {% for g in finals %}
+            <div class="matchup-card" style="border-color: var(--accent);">
+                <span class="badge badge-warning">Championship Final</span>
+                <small style="display:block; color:var(--text-muted); margin:0.25rem 0;">{{ g.date|date:"M d, g:i A" }} &bull; {{ g.location }}</small>
+                <div class="matchup-team {% if g.winner == g.team1 %}matchup-winner{% endif %}">
+                    <span>{{ g.team1.name }}</span>
+                    <span>{{ g.team1_score }}</span>
+                </div>
+                <div class="matchup-team {% if g.winner == g.team2 %}matchup-winner{% endif %}">
+                    <span>{{ g.team2.name }}</span>
+                    <span>{{ g.team2_score }}</span>
+                </div>
+                <div style="margin-top:0.5rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span class="badge">{{ g.get_status_display }}</span>
+                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Score / Box Score</a>
+                </div>
+            </div>
+        {% empty %}
+            <div class="card"><p>Complete the semifinals and click "Advance Semifinal Winners to Final" to schedule the championship.</p></div>
+        {% endfor %}
+
+        {% for g in consolations %}
+            <div class="matchup-card">
+                <span class="badge">3rd Place Fellowship Match</span>
+                <small style="display:block; color:var(--text-muted); margin:0.25rem 0;">{{ g.date|date:"M d, g:i A" }} &bull; {{ g.location }}</small>
+                <div class="matchup-team {% if g.winner == g.team1 %}matchup-winner{% endif %}">
+                    <span>{{ g.team1.name }}</span>
+                    <span>{{ g.team1_score }}</span>
+                </div>
+                <div class="matchup-team {% if g.winner == g.team2 %}matchup-winner{% endif %}">
+                    <span>{{ g.team2.name }}</span>
+                    <span>{{ g.team2_score }}</span>
+                </div>
+                <div style="margin-top:0.5rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span class="badge">{{ g.get_status_display }}</span>
+                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Score / Box Score</a>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

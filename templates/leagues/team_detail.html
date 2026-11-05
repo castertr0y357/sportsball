@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ team.name }} | Team Roster{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ team.name }} <span class="badge">{{ team.team_color }}</span></h1>
+        <p style="margin:0.2rem 0 0; color:var(--text-muted);">
+            <a href="{% url 'season_detail' team.season.id %}">{{ team.season.name }}</a> &bull;
+            Church: {% if team.church %}<a href="{% url 'church_detail' team.church.id %}">{{ team.church.name }}</a>{% else %}Community Fellowship{% endif %}
+            &bull; Captain: {{ team.captain.display_name }}
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
+        {% if user.is_authenticated and user not in team.players.all %}
+            <form method="post" action="{% url 'join_team' team.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-accent">Join Team Roster</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Team Roster ({{ team.players.count }} / {{ team.season.max_roster_size }})</h2>
+        {% if team.players.all %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Player</th>
+                            <th>Role</th>
+                            <th>Home Church</th>
+                            <th>Waiver</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in team.players.all %}
+                        <tr>
+                            <td>{% if p.jersey_number != None %}#{{ p.jersey_number }}{% else %}-{% endif %}</td>
+                            <td>
+                                <a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a>
+                                {% if p == team.captain %}<span class="badge badge-primary">Captain</span>{% endif %}
+                            </td>
+                            <td>{{ p.get_role_display }}</td>
+                            <td>{{ p.church.name|default:"-" }}</td>
+                            <td>
+                                {% if p.waiver_signed %}
+                                    <span class="badge badge-success">Signed</span>
+                                {% else %}
+                                    <span class="badge badge-warning">Pending</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No players on the roster yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Team Schedule &amp; Results</h2>
+        {% if games %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Matchup</th>
+                            <th>Result / Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in games %}
+                        <tr>
+                            <td>{{ g.date|date:"M d, g:i A" }}</td>
+                            <td><strong>{{ g.team1.name }}</strong> vs <strong>{{ g.team2.name }}</strong></td>
+                            <td>
+                                {% if g.status == 'completed' %}
+                                    <span class="badge badge-success">{{ g.team1_score }} - {{ g.team2_score }}</span>
+                                {% else %}
+                                    <span class="badge">{{ g.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td><a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">View</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No games scheduled for this team yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

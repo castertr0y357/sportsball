@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}{{ season.name }} | {{ league.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ league.name }} &mdash; {{ season.name }}</h1>
+        <p style="margin:0.2rem 0 0; color:var(--text-muted);">
+            {{ season.start_date|date:"M d, Y" }} &ndash; {{ season.end_date|date:"M d, Y" }}
+            {% if season.current %}&bull; <span class="badge badge-success">Active Season</span>{% endif %}
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'team_list' season.id %}" class="btn btn-secondary">Teams &amp; Rosters</a>
+        <a href="{% url 'playoff_bracket' season.id %}" class="btn btn-secondary">Playoff Bracket</a>
+        <a href="{% url 'leaderboard' %}?season={{ season.id }}" class="btn btn-secondary">Season Stat Leaders</a>
+        {% if season.registration_open %}
+            <a href="{% url 'register_for_season' season.id %}" class="btn btn-accent">Player Registration</a>
+        {% endif %}
+        {% if user.can_manage_teams %}
+            <a href="{% url 'create_team' season.id %}" class="btn">+ Add Team</a>
+            <a href="{% url 'create_game' season.id %}" class="btn">+ Schedule Game</a>
+        {% endif %}
+        {% if user.is_league_admin %}
+            <a href="{% url 'generate_schedule' season.id %}" class="btn">Auto-Generate Schedule</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2>Season Standings</h2>
+    {% if standings %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Church</th>
+                        <th>GP</th>
+                        <th>W</th>
+                        <th>L</th>
+                        <th>T</th>
+                        <th>PCT</th>
+                        <th>PF</th>
+                        <th>PA</th>
+                        <th>DIFF</th>
+                        <th>STRK</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in standings %}
+                    <tr>
+                        <td><strong>#{{ row.rank }}</strong></td>
+                        <td><a href="{% url 'team_detail' row.team.id %}"><strong>{{ row.team.name }}</strong></a></td>
+                        <td>{{ row.team.church.name|default:"Multi-Church" }}</td>
+                        <td>{{ row.played }}</td>
+                        <td><strong>{{ row.wins }}</strong></td>
+                        <td>{{ row.losses }}</td>
+                        <td>{{ row.ties }}</td>
+                        <td>{{ row.win_pct|floatformat:3 }}</td>
+                        <td>{{ row.points_for }}</td>
+                        <td>{{ row.points_against }}</td>
+                        <td>{% if row.point_diff > 0 %}+{% endif %}{{ row.point_diff }}</td>
+                        <td><span class="badge">{{ row.streak }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No teams registered in this season yet.</p>
+    {% endif %}
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Regular Season Schedule &amp; Scores</h2>
+        {% if regular_games %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Wk</th>
+                            <th>Date</th>
+                            <th>Matchup</th>
+                            <th>Status / Score</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in regular_games %}
+                        <tr>
+                            <td>W{{ g.week_number }}</td>
+                            <td>{{ g.date|date:"M d, g:i A" }}</td>
+                            <td>
+                                <a href="{% url 'team_detail' g.team1.id %}">{{ g.team1.name }}</a> vs
+                                <a href="{% url 'team_detail' g.team2.id %}">{{ g.team2.name }}</a>
+                            </td>
+                            <td>
+                                {% if g.status == 'completed' %}
+                                    <span class="badge badge-success">Final: {{ g.team1_score }} - {{ g.team2_score }}</span>
+                                {% elif g.status == 'postponed' %}
+                                    <span class="badge badge-danger">Rainout / Postponed</span>
+                                {% else %}
+                                    <span class="badge">{{ g.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a>
+                                <a href="{% url 'gamecast' g.id %}" class="btn btn-sm">GameCast</a>
+                                {% if user.can_record_scores %}
+                                    <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Dugout Console</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No regular-season games scheduled yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Player Registrations &amp; Free Agents ({{ registrations.count }})</h2>
+        {% if registrations %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th>Request</th>
+                            <th>Waiver / Dues</th>
+                            {% if user.can_manage_teams %}<th>Manage</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reg in registrations %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'player_detail' reg.player.id %}"><strong>{{ reg.player.display_name }}</strong></a><br>
+                                <small style="color:var(--text-muted);">{{ reg.notes }}</small>
+                            </td>
+                            <td>
+                                {% if reg.is_free_agent %}
+                                    <span class="badge badge-warning">Free Agent</span>
+                                {% elif reg.preferred_team %}
+                                    {{ reg.preferred_team.name }}
+                                {% endif %}
+                                <span class="badge">{{ reg.get_status_display }}</span>
+                            </td>
+                            <td>
+                                {% if reg.waiver_agreed %}<span class="badge badge-success">Waiver OK</span>{% else %}<span class="badge badge-warning">No Waiver</span>{% endif %}
+                                {% if reg.dues_paid %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Unpaid</span>{% endif %}
+                            </td>
+                            {% if user.can_manage_teams %}
+                            <td>
+                                <form method="post" action="{% url 'assign_registration' reg.id %}" style="display:flex; gap:0.25rem; align-items:center;">
+                                    {% csrf_token %}
+                                    <select name="team_id" style="width:auto; padding:0.25rem;">
+                                        <option value="">Assign team...</option>
+                                        {% for st in standings %}
+                                            <option value="{{ st.team.id }}" {% if reg.preferred_team_id == st.team.id %}selected{% endif %}>{{ st.team.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" name="action" value="approve" class="btn btn-sm">Roster</button>
+                                    <button type="submit" name="action" value="toggle_dues" class="btn btn-sm btn-secondary">Dues</button>
+                                </form>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No player registrations submitted yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

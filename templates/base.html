@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <title>{% block title %}Church Sports Leagues{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-inner">
+            <a href="{% url 'home' %}" class="brand">Church Sports Leagues</a>
+            <nav class="nav-links">
+                <a href="{% url 'home' %}">Dashboard</a>
+                <a href="{% url 'league_list' %}">Leagues &amp; Seasons</a>
+                <a href="{% url 'leaderboard' %}">Stat Leaderboards</a>
+                <a href="{% url 'church_list' %}">Church Directory</a>
+                <a href="{% url 'free_agent_list' %}">Free Agents</a>
+                <a href="{% url 'announcement_list' %}">Announcements</a>
+                {% if user.is_authenticated %}
+                    <a href="{% url 'profile' %}">{{ user.display_name }} ({{ user.get_role_display }})</a>
+                    <form action="{% url 'logout' %}" method="post" style="display:inline; margin:0;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-secondary">Log Out</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}">Log In</a>
+                    <a href="{% url 'register' %}" class="btn btn-sm btn-accent">Sign Up</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% else %}alert-warning{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>Church Sports Leagues &mdash; Fellowship, Sportsmanship &amp; Community Competition</p>
+    </footer>
+
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(err => {
+                console.log('ServiceWorker registration optional:', err);
+            });
+        });
+    }
+    </script>
+</body>
+</html>

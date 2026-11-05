@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Partner Churches | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Partner Church Directory</h1>
+        <p style="margin:0; color:var(--text-muted);">Local congregations participating in fellowship sports leagues</p>
+    </div>
+    {% if user.is_authenticated and user.can_manage_teams %}
+        <a href="{% url 'create_church' %}" class="btn">+ Add Partner Church</a>
+    {% endif %}
+</div>
+
+<div class="grid grid-3">
+    {% for church in churches %}
+        <div class="card">
+            <h3><a href="{% url 'church_detail' church.id %}">{{ church.name }}</a></h3>
+            {% if church.denomination %}
+                <span class="badge badge-primary">{{ church.denomination }}</span>
+            {% endif %}
+            <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0;">
+                {% if church.city or church.state %}{{ church.city }}{% if church.city and church.state %}, {% endif %}{{ church.state }}<br>{% endif %}
+                {% if church.pastor_or_contact %}Contact: {{ church.pastor_or_contact }}{% endif %}
+            </p>
+            <p>{{ church.description|truncatewords:25 }}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem;">
+                <span class="badge">{{ church.teams.count }} Teams &bull; {{ church.members.count }} Members</span>
+                <a href="{% url 'church_detail' church.id %}" class="btn btn-sm btn-secondary">View Church</a>
+            </div>
+        </div>
+    {% empty %}
+        <div class="card">
+            <p>No partner churches listed yet.</p>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

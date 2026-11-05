@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Fellowship &amp; League Dashboard</h1>
+        <p style="margin:0.25rem 0 0; color:var(--text-muted);">
+            {{ churches_count }} Partner Churches &bull; {{ leagues_count }} Active Sports Ministries
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <a href="{% url 'league_list' %}" class="btn">Browse Leagues</a>
+        <a href="{% url 'leaderboard' %}" class="btn btn-secondary">View Leaderboards</a>
+    </div>
+</div>
+
+{% if urgent_alerts %}
+    {% for alert in urgent_alerts %}
+        <div class="alert alert-urgent">
+            <strong>URGENT ({{ alert.get_category_display }}): {{ alert.title }}</strong><br>
+            {{ alert.content }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% if devotional %}
+    <div class="alert alert-devotional">
+        <strong>Weekly Devotional: {{ devotional.title }}</strong>
+        {% if devotional.scripture_reference %}
+            <span class="badge badge-warning">{{ devotional.scripture_reference }}</span>
+        {% endif %}
+        <p style="margin:0.35rem 0 0;">{{ devotional.content }}</p>
+    </div>
+{% endif %}
+
+<div class="grid grid-2" style="margin-bottom: 1.5rem;">
+    <div class="card">
+        <h2>Current Active Seasons</h2>
+        {% if active_seasons %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>League / Sport</th>
+                            <th>Season</th>
+                            <th>Registration</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in active_seasons %}
+                        <tr>
+                            <td>
+                                <strong>{{ s.league.name }}</strong><br>
+                                <span class="badge badge-primary">{{ s.league.get_sport_display }}</span>
+                            </td>
+                            <td>{{ s.name }}</td>
+                            <td>
+                                {% if s.registration_open %}
+                                    <span class="badge badge-success">Open (${{ s.registration_fee }})</span>
+                                {% else %}
+                                    <span class="badge">Closed</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'season_detail' s.id %}" class="btn btn-sm">Standings &amp; Schedule</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No active seasons right now. <a href="{% url 'league_list' %}">Explore leagues</a>.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>League Announcements</h2>
+            <a href="{% url 'announcement_list' %}" class="btn btn-sm btn-secondary">All Updates</a>
+        </div>
+        {% if recent_announcements %}
+            <ul style="padding-left:1.1rem; margin:0.5rem 0 0;">
+                {% for a in recent_announcements %}
+                    <li style="margin-bottom:0.65rem;">
+                        <span class="badge">{{ a.get_category_display }}</span>
+                        <strong>{{ a.title }}</strong> &mdash;
+                        <span style="color:var(--text-muted);">{{ a.content|truncatewords:20 }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No announcements posted yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Upcoming Games</h2>
+        {% if upcoming_games %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date &amp; Time</th>
+                            <th>Matchup</th>
+                            <th>Location</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in upcoming_games %}
+                        <tr>
+                            <td>{{ g.date|date:"M d, g:i A" }}</td>
+                            <td>
+                                <strong>{{ g.team1.name }}</strong> vs <strong>{{ g.team2.name }}</strong>
+                                {% if g.game_type != 'regular' %}
+                                    <span class="badge badge-warning">{{ g.get_game_type_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ g.location }}</td>
+                            <td>
+                                <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
+                                <a href="{% url 'gamecast' g.id %}" class="btn btn-sm">GameCast</a>
+                                {% if user.is_authenticated and user.can_record_scores %}
+                                    <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Dugout Console</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No upcoming scheduled games.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Recent Final Scores</h2>
+        {% if recent_results %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Final Result</th>
+                            <th>Season</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in recent_results %}
+                        <tr>
+                            <td>{{ g.date|date:"M d" }}</td>
+                            <td>
+                                <strong>{{ g.team1.name }} {{ g.team1_score }}</strong> &ndash;
+                                <strong>{{ g.team2_score }} {{ g.team2.name }}</strong>
+                            </td>
+                            <td>{{ g.season.name }}</td>
+                            <td><a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No completed games recorded yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

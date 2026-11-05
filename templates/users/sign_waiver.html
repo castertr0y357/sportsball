@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Sign Liability Waiver | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:650px; margin:0 auto;">
+    <h1>Liability Waiver &amp; Christian Sportsmanship Covenant</h1>
+    <div class="alert alert-warning">
+        <p style="margin:0 0 0.5rem;"><strong>1. Fellowship &amp; Conduct Covenant:</strong> I pledge to honor Christ on and off the court/field through respectful speech, encouragement toward referees and opponents, and joyful competition.</p>
+        <p style="margin:0;"><strong>2. Liability Release:</strong> I acknowledge that participation in athletics involves physical risk and voluntarily release participating churches and league organizers from liability for injuries sustained during league activities.</p>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn btn-accent">Sign Waiver Electronically</button>
+            <a href="{% url 'profile' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

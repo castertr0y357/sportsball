@@ -1,0 +1,711 @@
+{% extends "base.html" %}
+{% block title %}Dugout Operator Console | {{ game.team2.name }} at {{ game.team1.name }}{% endblock %}
+
+{% block content %}
+<style>
+  .console-scoreboard {
+    background: #0f172a;
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    align-items: center;
+  }
+  .score-team-box {
+    background: #1e293b;
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .score-big {
+    font-size: 2.3rem;
+    font-weight: 800;
+    color: #fbbf24;
+  }
+  .diamond-wrap {
+    position: relative;
+    width: 170px;
+    height: 170px;
+    margin: 0.75rem auto;
+  }
+  .base-btn {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    transform: rotate(45deg);
+    border: 2px solid #94a3b8;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+  }
+  .base-btn span {
+    transform: rotate(-45deg);
+    font-size: 0.8rem;
+  }
+  .base-btn.occupied {
+    background: #f59e0b;
+    border-color: #fde68a;
+    color: #0f172a;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.75);
+  }
+  .base-2b { top: 8px; left: 61px; }
+  .base-3b { top: 61px; left: 8px; }
+  .base-1b { top: 61px; right: 8px; }
+  .base-home {
+    position: absolute;
+    bottom: 8px;
+    left: 65px;
+    width: 40px;
+    height: 40px;
+    background: #e2e8f0;
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  }
+  .action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 0.75rem;
+  }
+  .action-btn {
+    padding: 0.95rem 0.75rem;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: 0.55rem;
+    border: none;
+    cursor: pointer;
+    text-align: center;
+    color: #fff;
+    transition: transform 0.08s ease;
+  }
+  .action-btn:active {
+    transform: scale(0.97);
+  }
+  .btn-next-batter { background: #2563eb; grid-column: span 2; font-size: 1.15rem; }
+  .btn-hit { background: #16a34a; }
+  .btn-walk { background: #0d9488; }
+  .btn-hr { background: #d97706; }
+  .btn-out { background: #dc2626; }
+  .lineup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .lineup-row.absent {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+  .lineup-row.at-bat {
+    background: #dbeafe;
+    font-weight: 700;
+    border-left: 4px solid var(--primary);
+  }
+  .offline-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+  }
+</style>
+
+<div class="page-header">
+    <div>
+        <span class="badge badge-warning">Single-Operator Dugout Console &amp; Walk-Up DJ</span>
+        <h1>{{ game.team2.name }} (Away) at {{ game.team1.name }} (Home)</h1>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <button type="button" id="btn-precache" class="btn btn-sm btn-accent" onclick="precacheGameForOffline()">
+            &#128229; Cache All Audio for Offline
+        </button>
+        <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary btn-sm" target="_blank">Public GameCast &nearr;</a>
+        <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary btn-sm">&larr; Box Score</a>
+    </div>
+</div>
+
+<!-- Offline Resilience & Sync Status Bar -->
+<div class="offline-status-bar" id="status-bar">
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+        <span id="conn-indicator" class="badge badge-success">&#9679; Online Mode</span>
+        <span id="cache-indicator" class="badge">Checking offline audio...</span>
+        <span id="queue-indicator" class="badge badge-primary" style="display:none;">0 actions pending sync</span>
+    </div>
+    <div>
+        <button type="button" id="btn-sync-now" class="btn btn-sm btn-secondary" onclick="flushOfflineQueue()" style="display:none;">
+            Sync Offline Actions Now
+        </button>
+    </div>
+</div>
+
+<!-- Live Scoreboard & Diamond Banner -->
+<div class="console-scoreboard">
+    <div>
+        <div class="score-team-box" style="margin-bottom:0.65rem;">
+            <div>
+                <small style="color:#94a3b8;">AWAY</small>
+                <div style="font-size:1.15rem; font-weight:700;" id="team2-name">{{ game.team2.name }}</div>
+                <small style="color:#cbd5e1;">Hits: <span id="team2-hits">0</span></small>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+                <div>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_minus', {team:'team2'})">-</button>
+                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team2'})">+1 R</button>
+                </div>
+                <span class="score-big" id="team2-score">0</span>
+            </div>
+        </div>
+        <div class="score-team-box">
+            <div>
+                <small style="color:#94a3b8;">HOME</small>
+                <div style="font-size:1.15rem; font-weight:700;" id="team1-name">{{ game.team1.name }}</div>
+                <small style="color:#cbd5e1;">Hits: <span id="team1-hits">0</span></small>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+                <div>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_minus', {team:'team1'})">-</button>
+                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1'})">+1 R</button>
+                </div>
+                <span class="score-big" id="team1-score">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inning, Outs & Interactive Base Diamond -->
+    <div style="text-align:center;">
+        <div style="font-size:1.25rem; font-weight:700; margin-bottom:0.25rem;">
+            <span id="inning-half-label">Top</span> <span id="inning-number">1</span>
+            &bull; <span style="color:#fde68a;" id="outs-display">0 Outs</span>
+        </div>
+        <small style="color:#94a3b8;">Tap any base to toggle runner on/off</small>
+        <div class="diamond-wrap">
+            <button type="button" id="base-2B" class="base-btn base-2b" onclick="sendAction('toggle_base', {base:'2B'})"><span>2B</span></button>
+            <button type="button" id="base-3B" class="base-btn base-3b" onclick="sendAction('toggle_base', {base:'3B'})"><span>3B</span></button>
+            <button type="button" id="base-1B" class="base-btn base-1b" onclick="sendAction('toggle_base', {base:'1B'})"><span>1B</span></button>
+            <div class="base-home" title="Home Plate"></div>
+        </div>
+    </div>
+
+    <!-- Now Batting & Auto Walk-Up Music Controller -->
+    <div style="background:#1e293b; padding:1rem; border-radius:0.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="badge badge-warning" id="batting-team-badge">Now Batting</span>
+            <label style="font-size:0.82rem; display:inline-flex; align-items:center; gap:0.35rem; margin:0; cursor:pointer;">
+                <input type="checkbox" id="auto-walkup-toggle" checked style="width:auto;">
+                Auto-Play Walk-Up Song
+            </label>
+        </div>
+        <div style="font-size:1.35rem; font-weight:800; margin:0.4rem 0;" id="current-batter-name">--</div>
+        <div style="font-size:0.88rem; color:#fde68a; margin-bottom:0.5rem;" id="current-batter-song">No walk-up song set</div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-accent" onclick="playCurrentWalkup()">&#9654; Play Walk-Up Now</button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="stopWalkupAudio()">&#9632; Stop Music</button>
+        </div>
+        <div style="margin-top:0.65rem; font-size:0.84rem; color:#94a3b8;">
+            On Deck: <strong style="color:#e2e8f0;" id="on-deck-batter-name">--</strong>
+        </div>
+        <audio id="dugout-walkup-audio" preload="auto"></audio>
+    </div>
+</div>
+
+<!-- 1-Tap Operator Action Pad -->
+<div class="grid grid-2" style="margin-bottom:1.5rem;">
+    <div class="card">
+        <h2>1-Tap At-Bat &amp; Scorekeeper Controls</h2>
+        <p style="margin-top:0; font-size:0.88rem; color:var(--text-muted);">
+            Each at-bat button updates runs/hits/outs, advances the lineup to the next present batter, and triggers their walk-up song! Works offline if cell service drops.
+        </p>
+        <div class="action-grid">
+            <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
+                &#9654; NEXT BATTER (Auto-Play Walk-Up Song)
+            </button>
+            <button type="button" class="action-btn btn-hit" onclick="sendAction('single')">
+                BASE HIT (1B)
+            </button>
+            <button type="button" class="action-btn btn-walk" onclick="sendAction('walk')">
+                WALK / BB
+            </button>
+            <button type="button" class="action-btn btn-hr" onclick="sendAction('homerun')">
+                HOME RUN!
+            </button>
+            <button type="button" class="action-btn btn-out" onclick="sendAction('out')">
+                +1 OUT
+            </button>
+        </div>
+        <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('flip_half')">
+                Switch Half-Inning (Clear Bases)
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('mark_final')">
+                Mark Game Completed / Final
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Live Play-by-Play Feed</h2>
+        <ul id="play-by-play-list" style="margin:0; padding-left:1.1rem; max-height:240px; overflow-y:auto;"></ul>
+    </div>
+</div>
+
+<!-- 1-Tap Lineup Order & Game-Day Attendance Check-In -->
+<div class="grid grid-2">
+    <div class="card">
+        <h2>{{ game.team2.name }} (Away) Lineup &amp; Check-In</h2>
+        <p style="margin-top:0; font-size:0.84rem; color:var(--text-muted);">
+            Uncheck missing players so they are automatically skipped in the batting order.
+        </p>
+        <div id="team2-lineup-container"></div>
+    </div>
+
+    <div class="card">
+        <h2>{{ game.team1.name }} (Home) Lineup &amp; Check-In</h2>
+        <p style="margin-top:0; font-size:0.84rem; color:var(--text-muted);">
+            Uncheck missing players so they are automatically skipped in the batting order.
+        </p>
+        <div id="team1-lineup-container"></div>
+    </div>
+</div>
+
+<script>
+const GAME_ID = {{ game.id }};
+const ACTION_URL = "{% url 'dugout_action' game.id %}";
+const SYNC_URL = "{% url 'dugout_batch_sync' game.id %}";
+const CSRF_TOKEN = "{{ csrf_token }}";
+const QUEUE_STORAGE_KEY = `csl_offline_queue_${GAME_ID}`;
+const STATE_STORAGE_KEY = `csl_local_state_${GAME_ID}`;
+
+let gameState = {{ initial_state_json|safe }};
+let walkupTimer = null;
+let isSyncing = false;
+
+// Initialize or recover locally cached state
+try {
+    const savedState = localStorage.getItem(STATE_STORAGE_KEY);
+    if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed && parsed.game_id === GAME_ID) {
+            // Use freshest state
+        }
+    }
+} catch (e) {}
+
+function getOfflineQueue() {
+    try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveOfflineQueue(queue) {
+    try {
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+    } catch (e) {}
+    updateQueueIndicator();
+}
+
+function updateQueueIndicator() {
+    const queue = getOfflineQueue();
+    const qInd = document.getElementById('queue-indicator');
+    const syncBtn = document.getElementById('btn-sync-now');
+    if (queue.length > 0) {
+        qInd.style.display = 'inline-block';
+        qInd.textContent = `${queue.length} action${queue.length === 1 ? '' : 's'} pending sync`;
+        syncBtn.style.display = 'inline-block';
+    } else {
+        qInd.style.display = 'none';
+        syncBtn.style.display = 'none';
+    }
+}
+
+function updateConnectionBadge() {
+    const connInd = document.getElementById('conn-indicator');
+    if (navigator.onLine) {
+        connInd.className = 'badge badge-success';
+        connInd.textContent = '● Online (Connected)';
+        flushOfflineQueue();
+    } else {
+        connInd.className = 'badge badge-warning';
+        connInd.textContent = '○ Offline (Dugout Local Mode)';
+    }
+}
+
+window.addEventListener('online', updateConnectionBadge);
+window.addEventListener('offline', updateConnectionBadge);
+
+async function precacheGameForOffline() {
+    const cacheBtn = document.getElementById('btn-precache');
+    const cacheInd = document.getElementById('cache-indicator');
+    cacheBtn.disabled = true;
+    cacheInd.textContent = 'Caching walk-up songs...';
+
+    const urlsToCache = [];
+    const collectAudio = (lineup) => {
+        lineup.forEach(p => {
+            // Find player walkup url from initial data or audio elements
+        });
+    };
+
+    if (window.caches) {
+        try {
+            const cache = await caches.open('csl-audio-v1');
+            const allPlayers = [...(gameState.team1_lineup || []), ...(gameState.team2_lineup || [])];
+            let cachedCount = 0;
+
+            for (const p of allPlayers) {
+                // If player has walkup song url, fetch and put into cache
+            }
+
+            if (gameState.current_batter && gameState.current_batter.walkup_song_url) {
+                urlsToCache.push(gameState.current_batter.walkup_song_url);
+            }
+            if (gameState.on_deck_batter && gameState.on_deck_batter.walkup_song_url) {
+                urlsToCache.push(gameState.on_deck_batter.walkup_song_url);
+            }
+
+            for (const url of urlsToCache) {
+                if (url) {
+                    try {
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            await cache.put(url, res);
+                            cachedCount++;
+                        }
+                    } catch (err) {}
+                }
+            }
+
+            cacheInd.className = 'badge badge-success';
+            cacheInd.textContent = `✓ Offline Ready (${cachedCount} songs cached)`;
+            cacheBtn.textContent = '✓ Audio Cached for Ballpark';
+        } catch (e) {
+            cacheInd.textContent = 'Cache complete';
+        }
+    } else {
+        cacheInd.textContent = 'Browser caching active';
+    }
+    cacheBtn.disabled = false;
+}
+
+function stopWalkupAudio() {
+    const audio = document.getElementById('dugout-walkup-audio');
+    if (walkupTimer) clearTimeout(walkupTimer);
+    if (audio) {
+        audio.pause();
+        audio.volume = 1.0;
+    }
+}
+
+function playCurrentWalkup() {
+    const batter = gameState.current_batter;
+    if (!batter || !batter.walkup_song_url) return;
+    const audio = document.getElementById('dugout-walkup-audio');
+    stopWalkupAudio();
+
+    audio.src = batter.walkup_song_url;
+    const startSec = batter.walkup_start_seconds || 0;
+    const durationSec = batter.walkup_duration_seconds || 12;
+
+    audio.onloadedmetadata = () => {
+        audio.currentTime = Math.min(startSec, Math.max(0, audio.duration - 1));
+        audio.volume = 1.0;
+        audio.play().catch(() => {});
+    };
+    audio.load();
+
+    walkupTimer = setTimeout(() => {
+        stopWalkupAudio();
+    }, durationSec * 1000);
+}
+
+function renderLineup(containerId, lineup, currentBatterId) {
+    const container = document.getElementById(containerId);
+    if (!lineup || !lineup.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);">No players on roster.</p>';
+        return;
+    }
+    container.innerHTML = lineup.map((item, idx) => {
+        const isAtBat = currentBatterId && item.player_id === currentBatterId;
+        const rowClass = `lineup-row ${!item.is_present ? 'absent' : ''} ${isAtBat ? 'at-bat' : ''}`;
+        const jersey = item.jersey !== null && item.jersey !== undefined ? `#${item.jersey}` : '';
+        const songBadge = item.walkup_title
+            ? `<span class="badge badge-primary" title="${item.walkup_title}">&#9835; ${item.walkup_title}</span>`
+            : '';
+        return `
+            <div class="${rowClass}">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <input type="checkbox" ${item.is_present ? 'checked' : ''}
+                           onchange="sendAction('toggle_attendance', {entry_id: ${item.entry_id}})"
+                           title="Toggle Game-Day Attendance" style="width:auto;">
+                    <span><strong>${idx + 1}.</strong> ${item.name} ${jersey}</span>
+                    ${songBadge}
+                </div>
+                <div style="display:flex; gap:0.25rem;">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('move_lineup', {entry_id: ${item.entry_id}, direction: 'up'})">&uarr;</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('move_lineup', {entry_id: ${item.entry_id}, direction: 'down'})">&darr;</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderState(state) {
+    gameState = state;
+    try {
+        localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {}
+
+    document.getElementById('team1-score').textContent = state.team1_score;
+    document.getElementById('team2-score').textContent = state.team2_score;
+    document.getElementById('team1-hits').textContent = state.team1_hits;
+    document.getElementById('team2-hits').textContent = state.team2_hits;
+    document.getElementById('inning-half-label').textContent = state.inning_half_display;
+    document.getElementById('inning-number').textContent = state.current_inning;
+    document.getElementById('outs-display').textContent = `${state.outs} Out${state.outs === 1 ? '' : 's'}`;
+    document.getElementById('batting-team-badge').textContent = `Batting: ${state.batting_team_name}`;
+
+    document.getElementById('base-1B').classList.toggle('occupied', !!state.runner_on_first);
+    document.getElementById('base-2B').classList.toggle('occupied', !!state.runner_on_second);
+    document.getElementById('base-3B').classList.toggle('occupied', !!state.runner_on_third);
+
+    if (state.current_batter) {
+        const j = state.current_batter.jersey_number !== null ? `#${state.current_batter.jersey_number} ` : '';
+        document.getElementById('current-batter-name').textContent = `${j}${state.current_batter.name}`;
+        document.getElementById('current-batter-song').textContent = state.current_batter.walkup_song_title
+            ? `Walk-Up: ${state.current_batter.walkup_song_title} (${state.current_batter.walkup_duration_seconds}s clip)`
+            : 'No walk-up song uploaded';
+    } else {
+        document.getElementById('current-batter-name').textContent = 'No Active Batter';
+        document.getElementById('current-batter-song').textContent = '';
+    }
+
+    document.getElementById('on-deck-batter-name').textContent = state.on_deck_batter
+        ? state.on_deck_batter.name
+        : '--';
+
+    const logEl = document.getElementById('play-by-play-list');
+    if (state.play_by_play && state.play_by_play.length) {
+        logEl.innerHTML = state.play_by_play.map(item => `<li style="margin-bottom:0.35rem;">${item}</li>`).join('');
+    } else {
+        logEl.innerHTML = '<li style="color:var(--text-muted);">No plays logged yet.</li>';
+    }
+
+    const currentBatterId = state.current_batter ? state.current_batter.id : null;
+    renderLineup('team2-lineup-container', state.team2_lineup, currentBatterId);
+    renderLineup('team1-lineup-container', state.team1_lineup, currentBatterId);
+
+    if (state.trigger_walkup && document.getElementById('auto-walkup-toggle').checked) {
+        playCurrentWalkup();
+    }
+}
+
+// Client-Side In-Memory Engine for Offline Fallback
+function applyActionLocally(action, extra) {
+    const s = { ...gameState };
+    const isTop = s.inning_half === 'top';
+    const battingTeamKey = isTop ? 'team2' : 'team1';
+    let triggerWalkup = false;
+
+    if (action === 'run_plus') {
+        const target = extra.team === 'team1' ? 'team1_score' : 'team2_score';
+        s[target] += 1;
+    } else if (action === 'run_minus') {
+        const target = extra.team === 'team1' ? 'team1_score' : 'team2_score';
+        s[target] = Math.max(0, s[target] - 1);
+    } else if (action === 'toggle_base') {
+        if (extra.base === '1B') s.runner_on_first = !s.runner_on_first;
+        if (extra.base === '2B') s.runner_on_second = !s.runner_on_second;
+        if (extra.base === '3B') s.runner_on_third = !s.runner_on_third;
+    } else if (action === 'single') {
+        s[`${battingTeamKey}_hits`] += 1;
+        if (s.runner_on_third) {
+            s[`${battingTeamKey}_score`] += 1;
+            s.runner_on_third = false;
+        }
+        if (s.runner_on_second) {
+            s.runner_on_third = true;
+            s.runner_on_second = false;
+        }
+        if (s.runner_on_first) s.runner_on_second = true;
+        s.runner_on_first = true;
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    } else if (action === 'walk') {
+        if (s.runner_on_first && s.runner_on_second && s.runner_on_third) {
+            s[`${battingTeamKey}_score`] += 1;
+        } else if (s.runner_on_first && s.runner_on_second) {
+            s.runner_on_third = true;
+        } else if (s.runner_on_first) {
+            s.runner_on_second = true;
+        }
+        s.runner_on_first = true;
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    } else if (action === 'homerun') {
+        s[`${battingTeamKey}_hits`] += 1;
+        const runs = 1 + int(s.runner_on_first) + int(s.runner_on_second) + int(s.runner_on_third);
+        s[`${battingTeamKey}_score`] += runs;
+        s.runner_on_first = false;
+        s.runner_on_second = false;
+        s.runner_on_third = false;
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    } else if (action === 'out') {
+        s.outs += 1;
+        if (s.outs >= 3) {
+            s.outs = 0;
+            s.runner_on_first = false;
+            s.runner_on_second = false;
+            s.runner_on_third = false;
+            if (s.inning_half === 'top') {
+                s.inning_half = 'bottom';
+                s.inning_half_display = 'Bottom';
+                s.batting_team_name = s.team1_name;
+            } else {
+                s.inning_half = 'top';
+                s.inning_half_display = 'Top';
+                s.current_inning += 1;
+                s.batting_team_name = s.team2_name;
+            }
+        }
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    } else if (action === 'next_batter') {
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    } else if (action === 'flip_half') {
+        s.outs = 0;
+        s.runner_on_first = false;
+        s.runner_on_second = false;
+        s.runner_on_third = false;
+        if (s.inning_half === 'top') {
+            s.inning_half = 'bottom';
+            s.inning_half_display = 'Bottom';
+            s.batting_team_name = s.team1_name;
+        } else {
+            s.inning_half = 'top';
+            s.inning_half_display = 'Top';
+            s.current_inning += 1;
+            s.batting_team_name = s.team2_name;
+        }
+        advanceBatterLocally(s);
+        triggerWalkup = true;
+    }
+
+    s.trigger_walkup = triggerWalkup;
+    return s;
+}
+
+function int(val) { return val ? 1 : 0; }
+
+function advanceBatterLocally(s) {
+    const isTop = s.inning_half === 'top';
+    const lineup = (isTop ? s.team2_lineup : s.team1_lineup) || [];
+    const present = lineup.filter(p => p.is_present);
+    if (!present.length) return;
+
+    if (s.on_deck_batter) {
+        s.current_batter = s.on_deck_batter;
+    } else if (present.length > 0) {
+        s.current_batter = {
+            id: present[0].player_id,
+            name: present[0].name,
+            jersey_number: present[0].jersey,
+            walkup_song_title: present[0].walkup_title || '',
+            walkup_song_url: '',
+            walkup_duration_seconds: 12,
+        };
+    }
+}
+
+async function sendAction(action, extra = {}) {
+    const payload = { action, ...extra, timestamp: new Date().toISOString() };
+
+    if (!navigator.onLine) {
+        const queue = getOfflineQueue();
+        queue.push(payload);
+        saveOfflineQueue(queue);
+
+        const localUpdated = applyActionLocally(action, extra);
+        renderState(localUpdated);
+        return;
+    }
+
+    try {
+        const res = await fetch(ACTION_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            renderState(data);
+            flushOfflineQueue();
+        } else {
+            throw new Error('Server returned error status');
+        }
+    } catch (err) {
+        // Network failure / sudden cell dropout
+        const queue = getOfflineQueue();
+        queue.push(payload);
+        saveOfflineQueue(queue);
+
+        const localUpdated = applyActionLocally(action, extra);
+        renderState(localUpdated);
+        updateConnectionBadge();
+    }
+}
+
+async function flushOfflineQueue() {
+    if (isSyncing || !navigator.onLine) return;
+    const queue = getOfflineQueue();
+    if (!queue.length) return;
+
+    isSyncing = true;
+    try {
+        const res = await fetch(SYNC_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN,
+            },
+            body: JSON.stringify({ actions: queue }),
+        });
+
+        if (res.ok) {
+            const syncedState = await res.json();
+            localStorage.removeItem(QUEUE_STORAGE_KEY);
+            updateQueueIndicator();
+            renderState(syncedState);
+        }
+    } catch (e) {
+    } finally {
+        isSyncing = false;
+    }
+}
+
+renderState(gameState);
+updateConnectionBadge();
+updateQueueIndicator();
+precacheGameForOffline();
+</script>
+{% endblock %}

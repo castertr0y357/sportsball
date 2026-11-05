@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Leagues | Church Sports Leagues{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Sports Ministry Leagues</h1>
+        <p style="margin:0; color:var(--text-muted);">Choose a league to view seasons, standings, schedules, and rosters</p>
+    </div>
+    {% if user.is_league_admin %}
+        <a href="{% url 'create_league' %}" class="btn">+ Create League</a>
+    {% endif %}
+</div>
+
+<div class="grid grid-2">
+    {% for league in leagues %}
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <h2 style="margin-bottom:0.25rem;">
+                    <a href="{% url 'season_list' league.id %}">{{ league.name }}</a>
+                </h2>
+                <span class="badge badge-primary">{{ league.get_sport_display }}</span>
+            </div>
+            <p style="color:var(--text-muted); margin-top:0.25rem;">Commissioner: {{ league.admin.display_name }}</p>
+            <p>{{ league.description }}</p>
+            {% if league.rules %}
+                <p style="font-size:0.88rem; color:var(--text-muted);"><strong>Rules Summary:</strong> {{ league.rules|truncatewords:25 }}</p>
+            {% endif %}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+                <span class="badge">{{ league.seasons.count }} Seasons</span>
+                <a href="{% url 'season_list' league.id %}" class="btn btn-sm">View Seasons &rarr;</a>
+            </div>
+        </div>
+    {% empty %}
+        <div class="card"><p>No leagues created yet.</p></div>
+    {% endfor %}
+</div>
+{% endblock %}

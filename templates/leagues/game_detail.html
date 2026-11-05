@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ game.team1.name }} vs {{ game.team2.name }} | Game Center{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <span class="badge badge-primary">{{ game.get_game_type_display }} &bull; Week {{ game.week_number }}</span>
+        <h1>{{ game.team1.name }} ({{ game.team1_score }}) vs ({{ game.team2_score }}) {{ game.team2.name }}</h1>
+        <p style="margin:0; color:var(--text-muted);">
+            {{ game.date|date:"l, M d, Y g:i A" }} &bull; {{ game.location }} &bull;
+            Status: <strong>{{ game.get_status_display }}</strong>
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary">Live Public GameCast</a>
+        {% if user.can_record_scores %}
+            <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Open 1-Person Dugout Console &amp; Walk-Up DJ</a>
+        {% endif %}
+        {% if game.season %}
+            <a href="{% url 'season_detail' game.season.id %}" class="btn btn-secondary">&larr; Back to Season</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2>Player Box Score &amp; Statistics</h2>
+    {% if player_stats %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Stat Category</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for st in player_stats %}
+                    <tr>
+                        <td><a href="{% url 'player_detail' st.player.id %}"><strong>{{ st.player.display_name }}</strong></a></td>
+                        <td>{{ st.team.name|default:"-" }}</td>
+                        <td>{{ st.category }}</td>
+                        <td><strong>{{ st.value }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No player statistics recorded for this game yet.</p>
+    {% endif %}
+</div>
+
+{% if user.can_record_scores %}
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Record / Update Game Score</h2>
+        <form method="post" action="{% url 'record_game_score' game.id %}">
+            {% csrf_token %}
+            {{ score_form.as_p }}
+            <button type="submit" class="btn">Save Score &amp; Status</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Log Individual Player Stat</h2>
+        <p style="font-size:0.85rem; color:var(--text-muted);">
+            Suggested categories for {{ game.season.league.get_sport_display }}:
+            {% for cat in suggested_categories %}
+                <span class="badge">{{ cat }}</span>
+            {% endfor %}
+        </p>
+        <form method="post" action="{% url 'add_game_stat' game.id %}">
+            {% csrf_token %}
+            {{ stat_form.as_p }}
+            <button type="submit" class="btn btn-accent">Save Player Stat</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
