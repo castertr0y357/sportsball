@@ -1,15 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Log In | Church Sports Leagues{% endblock %}
+{% block title %}Log In | SportsBall{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:450px; margin:2rem auto;">
-    <h1>Log In</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn" style="width:100%;">Log In</button>
-    </form>
-    <p style="margin-top:1rem; text-align:center;">
+<div class="card" style="max-width:450px; margin:2rem auto; text-align:center;">
+    <h1 style="margin-bottom:0.25rem;">&#9918; SportsBall</h1>
+    <p style="color:var(--text-muted); font-size:0.95rem; margin-top:0; margin-bottom:1.5rem;" id="login-tagline">
+        Rec league scorekeeping, minus the headache.
+    </p>
+    <div style="text-align:left;">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="btn" style="width:100%; margin-top:0.5rem;">Log In</button>
+        </form>
+    </div>
+    <p style="margin-top:1.25rem; font-size:0.9rem;">
         Don't have an account yet? <a href="{% url 'register' %}">Create an account</a>
     </p>
 </div>

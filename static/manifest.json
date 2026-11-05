@@ -1,11 +1,11 @@
 {
-  "name": "Church Sports Leagues",
-  "short_name": "Church Leagues",
+  "name": "SportsBall",
+  "short_name": "SportsBall",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#1e3a8a",
-  "description": "Church Sports Leagues, Dugout Console & Walk-Up DJ",
+  "description": "SportsBall - Easy rec league scorekeeping, walk-up songs & live GameCast",
   "icons": [
     {
       "src": "/static/img/icon-192.png",

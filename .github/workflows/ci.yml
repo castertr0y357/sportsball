@@ -66,6 +66,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: church-sports-leagues:latest
+          tags: sportsball:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

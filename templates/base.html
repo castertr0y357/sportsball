@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1e3a8a">
     <link rel="manifest" href="{% static 'manifest.json' %}">
-    <title>{% block title %}Church Sports Leagues{% endblock %}</title>
+    <title>{% block title %}SportsBall{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
 </head>
 <body>
     <header class="navbar">
         <div class="navbar-inner">
-            <a href="{% url 'home' %}" class="brand">Church Sports Leagues</a>
+            <a href="{% url 'home' %}" class="brand">&#9918; SportsBall</a>
             <nav class="nav-links">
                 <a href="{% url 'home' %}">Dashboard</a>
                 <a href="{% url 'league_list' %}">Leagues &amp; Seasons</a>
@@ -47,7 +47,7 @@
     </main>
 
     <footer>
-        <p>Church Sports Leagues &mdash; Fellowship, Sportsmanship &amp; Community Competition</p>
+        <p><strong>SportsBall</strong> &mdash; Rec League Scorekeeping, Fellowship &amp; Ballpark Walk-Up Bangers</p>
     </footer>
 
     <script>
