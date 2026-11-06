@@ -13,12 +13,7 @@
     </div>
     <div style="display:flex; gap:0.5rem; align-items:center;">
         <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
-        {% if user.is_authenticated and user not in team.players.all %}
-            <form method="post" action="{% url 'join_team' team.id %}" style="margin:0;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-accent">Join Team Roster</button>
-            </form>
-        {% endif %}
+
     </div>
 </div>
 

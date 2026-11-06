@@ -70,8 +70,10 @@ def season_detail(request, season_id):
     playoff_games = [g for g in games if g.game_type != 'regular']
     registrations = season.registrations.select_related('player', 'preferred_team').all()
     user_registration = None
+    can_manage_league = False
     if request.user.is_authenticated:
         user_registration = registrations.filter(player=request.user).first()
+        can_manage_league = request.user.can_manage_league(season.league)
 
     return render(request, 'leagues/season_detail.html', {
         'season': season,
@@ -81,6 +83,7 @@ def season_detail(request, season_id):
         'playoff_games': playoff_games,
         'registrations': registrations,
         'user_registration': user_registration,
+        'can_manage_league': can_manage_league,
     })
 
 
@@ -178,24 +181,7 @@ def team_detail(request, team_id):
 @login_required
 def join_team(request, team_id):
     team = get_object_or_404(Team.objects.select_related('season'), id=team_id)
-    if request.method == 'POST':
-        if team.players.count() >= team.season.max_roster_size:
-            messages.error(request, f"'{team.name}' has reached the maximum roster size ({team.season.max_roster_size}).")
-            return redirect('team_detail', team_id=team.id)
-        team.players.add(request.user)
-        request.user.is_free_agent = False
-        request.user.save(update_fields=['is_free_agent'])
-        SeasonRegistration.objects.update_or_create(
-            season=team.season,
-            player=request.user,
-            defaults={
-                'preferred_team': team,
-                'is_free_agent': False,
-                'status': 'approved',
-                'waiver_agreed': request.user.waiver_signed,
-            }
-        )
-        messages.success(request, f"You have joined '{team.name}'!")
+    messages.info(request, "Joining a team roster requires an invite link from the Team Captain or an assignment by your Church Commissioner.")
     return redirect('team_detail', team_id=team.id)
 
 
@@ -269,39 +255,60 @@ def register_for_season(request, season_id):
 
 @login_required
 def assign_registration(request, reg_id):
-    reg = get_object_or_404(SeasonRegistration.objects.select_related('season', 'player', 'preferred_team'), id=reg_id)
-    if not request.user.can_manage_teams:
-        messages.error(request, "You do not have permission to approve registrations.")
+    reg = get_object_or_404(SeasonRegistration.objects.select_related('season__league', 'player__church', 'preferred_team__church'), id=reg_id)
+    user = request.user
+    if not user.can_manage_teams:
+        messages.error(request, "You do not have permission to manage registrations.")
         return redirect('season_detail', season_id=reg.season_id)
 
     if request.method == 'POST':
         team_id = request.POST.get('team_id')
         action = request.POST.get('action', 'approve')
         if action == 'toggle_dues':
+            can_manage_dues = (
+                user.is_overall_commissioner or
+                user.can_manage_league(reg.season.league) or
+                (reg.player.church and user.can_manage_church(reg.player.church))
+            )
+            if not can_manage_dues:
+                messages.error(request, "Only Church or League Commissioners can update player dues status.")
+                return redirect('season_detail', season_id=reg.season_id)
+
             reg.dues_paid = not reg.dues_paid
             reg.save(update_fields=['dues_paid'])
             messages.success(request, f"Updated dues status for {reg.player.display_name}.")
         elif action == 'approve':
             target_team = get_object_or_404(Team, id=team_id, season=reg.season) if team_id else reg.preferred_team
-            if target_team:
-                target_team.players.add(reg.player)
-                reg.preferred_team = target_team
-                reg.status = 'approved'
-                reg.is_free_agent = False
-                reg.save()
-                reg.player.is_free_agent = False
-                reg.player.save(update_fields=['is_free_agent'])
-                messages.success(request, f"{reg.player.display_name} assigned to {target_team.name}!")
-            else:
+            if not target_team:
                 messages.error(request, "Please select a team to assign this player to.")
+                return redirect('season_detail', season_id=reg.season_id)
+
+            can_assign_to_target = (
+                user.is_overall_commissioner or
+                user.can_manage_league(reg.season.league) or
+                user.can_manage_church(target_team.church) or
+                target_team.captain_id == user.id
+            )
+            if not can_assign_to_target:
+                messages.error(request, f"You do not have permission to roster players to {target_team.name}.")
+                return redirect('season_detail', season_id=reg.season_id)
+
+            target_team.players.add(reg.player)
+            reg.preferred_team = target_team
+            reg.status = 'approved'
+            reg.is_free_agent = False
+            reg.save()
+            reg.player.is_free_agent = False
+            reg.player.save(update_fields=['is_free_agent'])
+            messages.success(request, f"{reg.player.display_name} assigned to {target_team.name}!")
     return redirect('season_detail', season_id=reg.season_id)
 
 
 @login_required
 def create_game(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
-    if not request.user.can_manage_teams:
-        messages.error(request, "You don't have permission to schedule games.")
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only League Commissioners or Overall Admins can schedule league games.")
         return redirect('season_detail', season_id=season.id)
 
     if request.method == 'POST':
@@ -324,8 +331,8 @@ def create_game(request, season_id):
 @login_required
 def generate_schedule(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
-    if not request.user.is_league_admin:
-        messages.error(request, "Only league admins can auto-generate schedules.")
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only the League Commissioner for this league can auto-generate schedules.")
         return redirect('season_detail', season_id=season.id)
 
     teams = list(season.teams.all())
@@ -406,8 +413,8 @@ def generate_schedule(request, season_id):
 @login_required
 def generate_playoffs(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
-    if not request.user.is_league_admin:
-        messages.error(request, "Only league admins can generate playoff brackets.")
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only the League Commissioner for this league can generate playoff brackets.")
         return redirect('season_detail', season_id=season.id)
 
     standings = season.get_standings()
@@ -474,8 +481,8 @@ def generate_playoffs(request, season_id):
 @login_required
 def advance_playoffs_to_final(request, season_id):
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
-    if not request.user.is_league_admin:
-        messages.error(request, "Only league admins can advance the playoff bracket.")
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only the League Commissioner for this league can advance the playoff bracket.")
         return redirect('playoff_bracket', season_id=season.id)
 
     if request.method == 'POST':
@@ -546,9 +553,10 @@ def game_detail(request, game_id):
     sport = game.season.league.sport if game.season_id else 'basketball'
     suggested_categories = [name for name, _abbr in SPORT_DEFAULT_CATEGORIES.get(sport, SPORT_DEFAULT_CATEGORIES['other'])]
 
+    can_score = request.user.is_authenticated and request.user.can_score_game(game)
     score_form = None
     stat_form = None
-    if request.user.can_record_scores:
+    if can_score:
         score_form = GameScoreForm(instance=game)
         stat_form = PlayerGameStatForm(game=game)
 
@@ -558,14 +566,15 @@ def game_detail(request, game_id):
         'score_form': score_form,
         'stat_form': stat_form,
         'suggested_categories': suggested_categories,
+        'can_score': can_score,
     })
 
 
 @login_required
 def record_game_score(request, game_id):
-    game = get_object_or_404(Game.objects.select_related('season', 'team1', 'team2'), id=game_id)
-    if not request.user.can_record_scores:
-        messages.error(request, "You do not have permission to record game scores.")
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "You do not have permission to record game scores for this match.")
         return redirect('game_detail', game_id=game.id)
 
     if request.method == 'POST':
@@ -581,9 +590,9 @@ def record_game_score(request, game_id):
 
 @login_required
 def add_game_stat(request, game_id):
-    game = get_object_or_404(Game.objects.select_related('season', 'team1', 'team2'), id=game_id)
-    if not request.user.can_record_scores:
-        messages.error(request, "You do not have permission to record player stats.")
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "You do not have permission to record player stats for this match.")
         return redirect('game_detail', game_id=game.id)
 
     if request.method == 'POST':
@@ -714,11 +723,11 @@ def _increment_player_stat(player, game, team, category, delta=1):
 def dugout_console(request, game_id):
     """Single-Operator Live Dugout Console with 1-tap scoreboard, lineup check-in & auto walk-up music."""
     game = get_object_or_404(
-        Game.objects.select_related('season__league', 'team1', 'team2', 'current_batter'),
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
         id=game_id
     )
-    if not request.user.can_record_scores:
-        messages.error(request, "Only coaches, scorekeepers, or admins can open the Dugout Operator Console.")
+    if not request.user.can_score_game(game):
+        messages.error(request, "Only assigned referees, participating team captains, or league commissioners can open the Dugout Operator Console for this match.")
         return redirect('gamecast', game_id=game.id)
 
     game.ensure_lineups_initialized()
@@ -740,11 +749,11 @@ def dugout_action(request, game_id):
         return JsonResponse({'error': 'POST required'}, status=405)
 
     game = get_object_or_404(
-        Game.objects.select_related('season__league', 'team1', 'team2', 'current_batter'),
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
         id=game_id
     )
-    if not request.user.can_record_scores:
-        return JsonResponse({'error': 'Permission denied'}, status=403)
+    if not request.user.can_score_game(game):
+        return JsonResponse({'error': 'Permission denied: you cannot score this match'}, status=403)
 
     try:
         payload = json.loads(request.body.decode('utf-8')) if request.body else request.POST
@@ -969,11 +978,11 @@ def dugout_batch_sync(request, game_id):
         return JsonResponse({'error': 'POST required'}, status=405)
 
     game = get_object_or_404(
-        Game.objects.select_related('season__league', 'team1', 'team2', 'current_batter'),
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
         id=game_id
     )
-    if not request.user.can_record_scores:
-        return JsonResponse({'error': 'Permission denied'}, status=403)
+    if not request.user.can_score_game(game):
+        return JsonResponse({'error': 'Permission denied: you cannot score this match'}, status=403)
 
     try:
         data = json.loads(request.body.decode('utf-8'))

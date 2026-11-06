@@ -7,10 +7,12 @@
         <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
             <h1>{{ church.name }}</h1>
             {% if church.denomination %}<span class="badge badge-primary">{{ church.denomination }}</span>{% endif %}
-            {% if church.dues_paid %}
-                <span class="badge badge-success">&#10003; League Dues Current</span>
-            {% else %}
-                <span class="badge badge-warning">&#9888; Dues Pending</span>
+            {% if is_church_commish or is_overall_commish %}
+                {% if church.dues_paid %}
+                    <span class="badge badge-success">&#10003; League Dues Current</span>
+                {% else %}
+                    <span class="badge badge-warning">&#9888; Dues Pending</span>
+                {% endif %}
             {% endif %}
         </div>
         <p style="margin:0; color:var(--text-muted); font-size:0.95rem;">
@@ -154,6 +156,7 @@
 </div>
 
 <!-- Congregation Athletes / Members -->
+{% if can_view_members %}
 <div class="card" style="margin-top:1.5rem;">
     <h2>Congregation Athletes &amp; Members ({{ members.count }})</h2>
     {% if members %}
@@ -196,4 +199,11 @@
         <p style="color:var(--text-muted);">No registered members affiliated with this church yet.</p>
     {% endif %}
 </div>
+{% else %}
+<div class="card" style="margin-top:1.5rem; background:var(--surface-alt); text-align:center; padding:1.5rem;">
+    <p style="margin:0; color:var(--text-muted); font-size:0.92rem;">
+        🔒 Internal congregation member directory is private to members of this church and league administration.
+    </p>
+</div>
+{% endif %}
 {% endblock %}

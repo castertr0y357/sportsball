@@ -591,3 +591,201 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         resp_church_admin = self.client.get(reverse('church_detail', args=[self.church.id]))
         self.assertEqual(resp_church_admin.status_code, 200)
         self.assertContains(resp_church_admin, "<th>Waiver</th>")
+
+    def test_coach_cannot_score_unrelated_game(self):
+        # Create game between team2 and team3 (neither has coach_user as captain)
+        # Note: self.team1 captain is coach_user, self.team2 captain is admin_user
+        unrelated_game = Game.objects.create(
+            season=self.season,
+            team1=self.team2,
+            team2=self.team4,
+            date=timezone.now(),
+            location="Gym B",
+            status="scheduled",
+            game_type="regular",
+        )
+
+        # 1. coach_user (captain of team1) attempts to score unrelated game -> blocked
+        self.client.login(username="coach_user", password="password123")
+        resp_post = self.client.post(reverse('record_game_score', args=[unrelated_game.id]), {
+            'team1_score': 10,
+            'team2_score': 8,
+            'status': 'completed',
+        })
+        self.assertEqual(resp_post.status_code, 302)
+        unrelated_game.refresh_from_db()
+        self.assertNotEqual(unrelated_game.status, 'completed')
+
+        # 2. coach_user attempts Dugout action on unrelated game -> 403 Forbidden
+        resp_ajax = self.client.post(
+            reverse('dugout_action', args=[unrelated_game.id]),
+            data='{"action": "single"}',
+            content_type='application/json'
+        )
+        self.assertEqual(resp_ajax.status_code, 403)
+
+        # 3. Participating team captain (admin_user for team2) can operate Dugout action
+        self.client.login(username="admin_user", password="password123")
+        resp_captain_ajax = self.client.post(
+            reverse('dugout_action', args=[unrelated_game.id]),
+            data='{"action": "single"}',
+            content_type='application/json'
+        )
+        self.assertEqual(resp_captain_ajax.status_code, 200)
+
+        # 4. Impartial referee can also operate Dugout action
+        ref = CustomUser.objects.create_user(
+            username="ref_user",
+            password="password123",
+            role="referee",
+        )
+        self.client.login(username="ref_user", password="password123")
+        resp_ref_ajax = self.client.post(
+            reverse('dugout_action', args=[unrelated_game.id]),
+            data='{"action": "walk"}',
+            content_type='application/json'
+        )
+        self.assertEqual(resp_ref_ajax.status_code, 200)
+
+    def test_create_game_restricted_to_league_commissioner(self):
+        # coach_user is not league commissioner -> blocked
+        self.client.login(username="coach_user", password="password123")
+        resp_coach = self.client.post(reverse('create_game', args=[self.season.id]), {
+            'team1': self.team1.id,
+            'team2': self.team2.id,
+            'date': (timezone.now() + timedelta(days=2)).strftime('%Y-%m-%dT18:30'),
+            'location': 'Gym A',
+            'game_type': 'regular',
+            'week_number': 1,
+            'status': 'scheduled',
+        })
+        self.assertEqual(resp_coach.status_code, 302)
+        self.assertFalse(Game.objects.filter(location='Gym A', week_number=1).exists())
+
+        # admin_user is league commissioner -> succeeds
+        self.client.login(username="admin_user", password="password123")
+        resp_admin = self.client.post(reverse('create_game', args=[self.season.id]), {
+            'team1': self.team1.id,
+            'team2': self.team2.id,
+            'date': (timezone.now() + timedelta(days=2)).strftime('%Y-%m-%dT18:30'),
+            'location': 'Gym A',
+            'game_type': 'regular',
+            'week_number': 1,
+            'status': 'scheduled',
+        })
+        self.assertEqual(resp_admin.status_code, 302)
+        self.assertTrue(Game.objects.filter(location='Gym A', week_number=1).exists())
+
+    def test_church_members_and_dues_privacy(self):
+        church2 = Church.objects.create(name="Calvary Baptist", city="Greenville", state="SC")
+        other_player = CustomUser.objects.create_user(
+            username="other_player",
+            password="password123",
+            role="player",
+            church=church2,
+        )
+
+        # 1. other_player from church2 viewing church1: member directory and dues are HIDDEN
+        self.client.login(username="other_player", password="password123")
+        resp_out = self.client.get(reverse('church_detail', args=[self.church.id]))
+        self.assertEqual(resp_out.status_code, 200)
+        self.assertNotContains(resp_out, "Congregation Athletes &amp; Members")
+        self.assertContains(resp_out, "Internal congregation member directory is private")
+        self.assertNotContains(resp_out, "League Dues")
+
+        # 2. player_user (belongs to church1) viewing church1: members VISIBLE, but dues and waivers HIDDEN
+        self.client.login(username="player_user", password="password123")
+        resp_in = self.client.get(reverse('church_detail', args=[self.church.id]))
+        self.assertEqual(resp_in.status_code, 200)
+        self.assertContains(resp_in, "Congregation Athletes &amp; Members")
+        self.assertNotContains(resp_in, "<th>Waiver</th>")
+        self.assertNotContains(resp_in, "League Dues")
+
+        # 3. admin_user (overall commissioner) viewing church1: members, waivers, and dues VISIBLE
+        self.client.login(username="admin_user", password="password123")
+        resp_adm = self.client.get(reverse('church_detail', args=[self.church.id]))
+        self.assertEqual(resp_adm.status_code, 200)
+        self.assertContains(resp_adm, "Congregation Athletes &amp; Members")
+        self.assertContains(resp_adm, "<th>Waiver</th>")
+        self.assertContains(resp_adm, "Dues Pending")
+
+    def test_profile_waiver_privacy(self):
+        # player_user has signed waiver
+        self.player_user.waiver_signed = True
+        self.player_user.save()
+
+        # other_player views player_user profile -> Waiver Signed is NOT shown
+        other = CustomUser.objects.create_user(username="viewer", password="password123", role="player")
+        self.client.login(username="viewer", password="password123")
+        resp_view = self.client.get(reverse('player_detail', args=[self.player_user.id]))
+        self.assertEqual(resp_view.status_code, 200)
+        self.assertNotContains(resp_view, "Waiver Signed")
+
+        # player_user views own profile -> Waiver Signed IS shown
+        self.client.login(username="player_user", password="password123")
+        resp_self = self.client.get(reverse('profile'))
+        self.assertEqual(resp_self.status_code, 200)
+        self.assertContains(resp_self, "Waiver Signed")
+
+    def test_free_agent_requires_login(self):
+        # Unauthenticated request redirects to login
+        resp = self.client.get(reverse('free_agent_list'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login/', resp.url)
+
+    def test_assign_registration_scoping(self):
+        reg = SeasonRegistration.objects.create(
+            season=self.season,
+            player=self.player_user,
+            status='pending',
+        )
+
+        # coach_user is captain of team1. Cannot assign to team2!
+        self.client.login(username="coach_user", password="password123")
+        resp_bad = self.client.post(reverse('assign_registration', args=[reg.id]), {
+            'action': 'approve',
+            'team_id': self.team2.id,
+        })
+        self.assertEqual(resp_bad.status_code, 302)
+        reg.refresh_from_db()
+        self.assertNotEqual(reg.preferred_team, self.team2)
+
+        # coach_user CAN assign to team1 (their own team)
+        resp_good = self.client.post(reverse('assign_registration', args=[reg.id]), {
+            'action': 'approve',
+            'team_id': self.team1.id,
+        })
+        self.assertEqual(resp_good.status_code, 302)
+        reg.refresh_from_db()
+        self.assertEqual(reg.preferred_team, self.team1)
+        self.assertIn(self.player_user, self.team1.players.all())
+
+        # coach_user cannot toggle dues
+        resp_dues_coach = self.client.post(reverse('assign_registration', args=[reg.id]), {
+            'action': 'toggle_dues',
+        })
+        self.assertEqual(resp_dues_coach.status_code, 302)
+        reg.refresh_from_db()
+        self.assertFalse(reg.dues_paid)
+
+        # admin_user CAN toggle dues
+        self.client.login(username="admin_user", password="password123")
+        resp_dues_admin = self.client.post(reverse('assign_registration', args=[reg.id]), {
+            'action': 'toggle_dues',
+        })
+        self.assertEqual(resp_dues_admin.status_code, 302)
+        reg.refresh_from_db()
+        self.assertTrue(reg.dues_paid)
+
+    def test_coach_cannot_post_urgent_announcement(self):
+        self.client.login(username="coach_user", password="password123")
+        resp = self.client.post(reverse('create_announcement'), {
+            'title': 'Coach Announcement',
+            'category': 'general',
+            'content': 'Practice moved to 7pm.',
+            'league': self.league.id,
+            'is_urgent': True,
+        })
+        self.assertEqual(resp.status_code, 302)
+        ann = Announcement.objects.get(title='Coach Announcement')
+        self.assertFalse(ann.is_urgent)  # Forced to False by permission enforcement

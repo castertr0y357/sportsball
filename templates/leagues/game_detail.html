@@ -13,7 +13,7 @@
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary">Live Public GameCast</a>
-        {% if user.can_record_scores %}
+        {% if can_score %}
             <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Open 1-Person Dugout Console &amp; Walk-Up DJ</a>
         {% endif %}
         {% if game.season %}
@@ -52,7 +52,7 @@
     {% endif %}
 </div>
 
-{% if user.can_record_scores %}
+{% if can_score %}
 <div class="grid grid-2">
     <div class="card">
         <h2>Record / Update Game Score</h2>

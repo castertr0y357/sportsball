@@ -33,9 +33,9 @@
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
             {% if user.can_manage_teams %}
                 <a href="{% url 'create_team' season.id %}" class="btn btn-sm btn-secondary">+ Add Team</a>
-                <a href="{% url 'create_game' season.id %}" class="btn btn-sm btn-secondary">+ Schedule Game</a>
             {% endif %}
-            {% if user.is_league_admin %}
+            {% if can_manage_league %}
+                <a href="{% url 'create_game' season.id %}" class="btn btn-sm btn-secondary">+ Schedule Game</a>
                 <a href="{% url 'generate_schedule' season.id %}" class="btn btn-sm btn-accent">⚡ Auto-Generate Schedule</a>
             {% endif %}
             <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">📢 Post Announcement</a>
@@ -168,6 +168,7 @@
         {% endif %}
     </div>
 
+    {% if user.can_manage_teams %}
     <div class="card">
         <h2>Player Registrations &amp; Free Agents ({{ registrations.count }})</h2>
         {% if registrations %}
@@ -228,5 +229,6 @@
             <p>No player registrations submitted yet.</p>
         {% endif %}
     </div>
+    {% endif %}
 </div>
 {% endblock %}

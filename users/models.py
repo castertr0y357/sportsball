@@ -118,6 +118,23 @@ class CustomUser(AbstractUser):
             self.captained_teams.exists()
         )
 
+    def can_score_game(self, game):
+        if not game or not self.is_authenticated:
+            return False
+        if self.is_overall_commissioner:
+            return True
+        if game.season and game.season.league and self.can_manage_league(game.season.league):
+            return True
+        if self.role == 'referee':
+            return True
+        if (game.team1 and game.team1.captain_id == self.id) or (game.team2 and game.team2.captain_id == self.id):
+            return True
+        if game.team1 and self.can_manage_church(game.team1.church):
+            return True
+        if game.team2 and self.can_manage_church(game.team2.church):
+            return True
+        return False
+
     @property
     def display_name(self):
         full = self.get_full_name().strip()

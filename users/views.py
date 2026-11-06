@@ -80,6 +80,7 @@ def profile(request):
         'captained_teams': captained_teams,
         'stat_totals': stat_totals,
         'recent_stats': recent_stats,
+        'can_see_waiver': True,
     })
 
 
@@ -98,12 +99,21 @@ def player_detail(request, user_id):
         .select_related('game__team1', 'game__team2', 'game__season')
         .order_by('-game__date')[:10]
     )
+    can_see_waiver = (
+        request.user.is_authenticated and (
+            request.user.id == profile_user.id or
+            request.user.is_overall_commissioner or
+            request.user.can_manage_church(profile_user.church) or
+            request.user.captained_teams.filter(players=profile_user).exists()
+        )
+    )
     return render(request, 'users/profile.html', {
         'profile_user': profile_user,
         'teams': teams,
         'captained_teams': captained_teams,
         'stat_totals': stat_totals,
         'recent_stats': recent_stats,
+        'can_see_waiver': can_see_waiver,
     })
 
 
@@ -134,6 +144,7 @@ def sign_waiver(request):
     return render(request, 'users/sign_waiver.html', {'form': form})
 
 
+@login_required
 def free_agent_list(request):
     free_agents = CustomUser.objects.filter(is_free_agent=True).select_related('church').order_by('username')
     return render(request, 'users/free_agents.html', {'free_agents': free_agents})

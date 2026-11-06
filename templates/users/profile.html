@@ -12,10 +12,12 @@
         {% if profile_user.jersey_number != None %}
             <span class="badge">#{{ profile_user.jersey_number }}</span>
         {% endif %}
-        {% if profile_user.waiver_signed %}
-            <span class="badge badge-success">Waiver Signed</span>
-        {% else %}
-            <span class="badge badge-warning">Waiver Unsigned</span>
+        {% if can_see_waiver %}
+            {% if profile_user.waiver_signed %}
+                <span class="badge badge-success">&#10003; Waiver Signed</span>
+            {% else %}
+                <span class="badge badge-warning">Waiver Unsigned</span>
+            {% endif %}
         {% endif %}
         {% if profile_user.is_free_agent %}
             <span class="badge badge-warning">Free Agent (Looking for Team)</span>

@@ -137,12 +137,22 @@ def church_detail(request, church_id):
         Q(church=church) | Q(role__in=['admin', 'committee', 'church_admin', 'coach'])
     ).distinct().order_by('first_name', 'last_name')
 
+    can_view_members = (
+        request.user.is_authenticated and (
+            is_church_commish or
+            is_overall_commish or
+            request.user.is_league_admin or
+            request.user.church_id == church.id
+        )
+    )
+
     return render(request, 'core/church_detail.html', {
         'church': church,
         'teams': teams,
         'members': members,
         'is_church_commish': is_church_commish,
         'is_overall_commish': is_overall_commish,
+        'can_view_members': can_view_members,
         'open_seasons': open_seasons,
         'eligible_commissioners': eligible_commissioners,
     })
@@ -193,8 +203,8 @@ def toggle_church_dues(request, church_id):
 
 @login_required
 def create_church(request):
-    if not request.user.is_league_admin:
-        messages.error(request, "Only League Administrators can add partner churches.")
+    if not request.user.is_overall_commissioner:
+        messages.error(request, "Only Overall Commissioners can add partner churches.")
         return redirect('home')
     if request.method == 'POST':
         form = ChurchForm(request.POST)
@@ -219,10 +229,12 @@ def create_announcement(request):
         return redirect('announcement_list')
 
     if request.method == 'POST':
-        form = AnnouncementForm(request.POST)
+        form = AnnouncementForm(request.POST, user=request.user)
         if form.is_valid():
             announcement = form.save(commit=False)
             announcement.author = request.user
+            if not (request.user.is_overall_commissioner or request.user.is_league_admin):
+                announcement.is_urgent = False
             announcement.save()
             # Broadcast to Discord if configured
             if announcement.send_discord:
@@ -236,5 +248,5 @@ def create_announcement(request):
             messages.success(request, "Announcement published.")
             return redirect('announcement_list')
     else:
-        form = AnnouncementForm()
+        form = AnnouncementForm(user=request.user)
     return render(request, 'core/create_announcement.html', {'form': form})
