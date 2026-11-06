@@ -18,7 +18,9 @@
                         <th>Player</th>
                         <th>Home Church</th>
                         <th>Role</th>
-                        <th>Waiver</th>
+                        {% if user.can_manage_teams %}
+                            <th>Waiver</th>
+                        {% endif %}
                         <th>Bio / Notes</th>
                     </tr>
                 </thead>
@@ -28,13 +30,15 @@
                         <td><a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a></td>
                         <td>{{ p.church.name|default:"Unlisted / Visiting" }}</td>
                         <td>{{ p.get_role_display }}</td>
+                        {% if user.can_manage_teams %}
                         <td>
                             {% if p.waiver_signed %}
-                                <span class="badge badge-success">Signed</span>
+                                <span class="badge badge-success">&#10003; Signed</span>
                             {% else %}
                                 <span class="badge badge-warning">Pending</span>
                             {% endif %}
                         </td>
+                        {% endif %}
                         <td>{{ p.bio|default:"-" }}</td>
                     </tr>
                     {% endfor %}

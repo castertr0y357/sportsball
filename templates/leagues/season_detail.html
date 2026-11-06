@@ -177,8 +177,10 @@
                         <tr>
                             <th>Player</th>
                             <th>Request</th>
-                            <th>Waiver / Dues</th>
-                            {% if user.can_manage_teams %}<th>Manage</th>{% endif %}
+                            {% if user.can_manage_teams %}
+                                <th>Waiver / Dues</th>
+                                <th>Manage</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -196,10 +198,12 @@
                                 {% endif %}
                                 <span class="badge">{{ reg.get_status_display }}</span>
                             </td>
+                            {% if user.can_manage_teams %}
                             <td>
                                 {% if reg.waiver_agreed %}<span class="badge badge-success">Waiver OK</span>{% else %}<span class="badge badge-warning">No Waiver</span>{% endif %}
                                 {% if reg.dues_paid %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Unpaid</span>{% endif %}
                             </td>
+                            {% endif %}
                             {% if user.can_manage_teams %}
                             <td>
                                 <form method="post" action="{% url 'assign_registration' reg.id %}" style="display:flex; gap:0.25rem; align-items:center;">

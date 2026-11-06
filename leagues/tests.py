@@ -564,3 +564,30 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(resp_dues.status_code, 302)
         self.church.refresh_from_db()
         self.assertTrue(self.church.dues_paid)
+
+    def test_waiver_visibility_restricted_to_captain_and_above(self):
+        # Add player_user to team1
+        self.team1.players.add(self.player_user)
+
+        # 1. Regular player visits team_detail: Waiver column should NOT appear
+        self.client.login(username="player_user", password="password123")
+        resp_team_player = self.client.get(reverse('team_detail', args=[self.team1.id]))
+        self.assertEqual(resp_team_player.status_code, 200)
+        self.assertNotContains(resp_team_player, "<th>Waiver</th>")
+
+        # 2. Regular player visits church_detail: Waiver column should NOT appear
+        resp_church_player = self.client.get(reverse('church_detail', args=[self.church.id]))
+        self.assertEqual(resp_church_player.status_code, 200)
+        self.assertNotContains(resp_church_player, "<th>Waiver</th>")
+
+        # 3. Team captain (coach_user) visits team_detail for team1: Waiver column SHOULD appear
+        self.client.login(username="coach_user", password="password123")
+        resp_team_captain = self.client.get(reverse('team_detail', args=[self.team1.id]))
+        self.assertEqual(resp_team_captain.status_code, 200)
+        self.assertContains(resp_team_captain, "<th>Waiver</th>")
+
+        # 4. Overall commissioner (admin_user) visits church_detail: Waiver column SHOULD appear
+        self.client.login(username="admin_user", password="password123")
+        resp_church_admin = self.client.get(reverse('church_detail', args=[self.church.id]))
+        self.assertEqual(resp_church_admin.status_code, 200)
+        self.assertContains(resp_church_admin, "<th>Waiver</th>")

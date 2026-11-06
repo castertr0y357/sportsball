@@ -102,7 +102,9 @@ function shareTeamInvite() {
                             <th>Player</th>
                             <th>Role</th>
                             <th>Home Church</th>
-                            <th>Waiver</th>
+                            {% if is_captain_or_admin %}
+                                <th>Waiver</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -115,13 +117,15 @@ function shareTeamInvite() {
                             </td>
                             <td>{{ p.get_role_display }}</td>
                             <td>{{ p.church.name|default:"-" }}</td>
+                            {% if is_captain_or_admin %}
                             <td>
                                 {% if p.waiver_signed %}
-                                    <span class="badge badge-success">Signed</span>
+                                    <span class="badge badge-success">&#10003; Signed</span>
                                 {% else %}
                                     <span class="badge badge-warning">Pending</span>
                                 {% endif %}
                             </td>
+                            {% endif %}
                         </tr>
                         {% endfor %}
                     </tbody>

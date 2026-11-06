@@ -159,8 +159,9 @@ def team_detail(request, team_id):
     is_captain_or_admin = (
         request.user.is_authenticated and (
             request.user == team.captain or
-            request.user.is_league_admin or
-            getattr(request.user, 'can_manage_teams', False)
+            request.user.can_manage_church(team.church) or
+            request.user.can_manage_league(team.league) or
+            request.user.is_league_admin
         )
     )
     invite_url = team.get_invite_url(request)

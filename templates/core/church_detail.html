@@ -164,7 +164,9 @@
                         <th>Athlete</th>
                         <th>Role</th>
                         <th>Jersey</th>
-                        <th>Waiver</th>
+                        {% if is_church_commish or is_overall_commish or user.is_league_admin %}
+                            <th>Waiver</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -176,6 +178,7 @@
                         </td>
                         <td>{{ m.get_role_display }}</td>
                         <td>{% if m.jersey_number %}#{{ m.jersey_number }}{% else %}-{% endif %}</td>
+                        {% if is_church_commish or is_overall_commish or user.is_league_admin %}
                         <td>
                             {% if m.waiver_signed %}
                                 <span class="badge badge-success">&#10003; Signed</span>
@@ -183,6 +186,7 @@
                                 <span class="badge badge-warning">Pending</span>
                             {% endif %}
                         </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
