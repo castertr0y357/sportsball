@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Join {{ team.name }} | SportsBall{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px; margin:2.5rem auto; text-align:center; padding:2rem 1.5rem;">
+    <div style="font-size:2.8rem; margin-bottom:0.5rem;">⚾</div>
+    <span class="badge badge-primary" style="font-size:0.85rem; margin-bottom:0.5rem;">Team Invitation</span>
+    <h1 style="margin:0.25rem 0 0.5rem; font-size:1.75rem;">Join {{ team.name }}</h1>
+    <p style="color:var(--text-muted); font-size:0.95rem; margin:0 0 1.25rem;">
+        You've been invited to join the roster for <strong>{{ team.name }}</strong> in the <strong>{{ team.season.name }}</strong>.
+    </p>
+
+    <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; text-align:left; margin-bottom:1.5rem; font-size:0.92rem;">
+        <div style="margin-bottom:0.4rem;"><strong>Sport:</strong> {{ team.season.league.get_sport_display }}</div>
+        <div style="margin-bottom:0.4rem;"><strong>Church / Ministry:</strong> {{ team.church.name|default:"Community Fellowship" }}</div>
+        <div style="margin-bottom:0.4rem;"><strong>Coach / Captain:</strong> {{ team.captain.display_name }}</div>
+        <div><strong>Current Roster:</strong> {{ team.players.count }} / {{ team.season.max_roster_size }} players</div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-accent" style="width:100%; font-size:1.05rem; padding:0.75rem; font-weight:700;">
+            🎉 Accept Invitation &amp; Join Team
+        </button>
+    </form>
+
+    <p style="margin-top:1rem; font-size:0.85rem;">
+        <a href="{% url 'home' %}" style="color:var(--text-muted);">Not your team? Return home</a>
+    </p>
+</div>
+{% endblock %}

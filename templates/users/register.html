@@ -1,16 +1,107 @@
 {% extends "base.html" %}
-{% block title %}Sign Up | Church Sports Leagues{% endblock %}
+{% block title %}Sign Up | SportsBall{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:600px; margin:1.5rem auto;">
-    <h1>Player &amp; Coach Registration</h1>
-    <form method="post">
+<div class="card" style="max-width:540px; margin:2rem auto; padding:2rem 1.75rem;">
+    {% if invited_team %}
+        <div style="background:linear-gradient(135deg, rgba(37,99,235,0.12), rgba(16,185,129,0.12)); border:1px solid rgba(37,99,235,0.25); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem; text-align:center;">
+            <div style="font-size:1.8rem; margin-bottom:0.25rem;">⚾</div>
+            <span class="badge badge-primary" style="font-size:0.8rem; margin-bottom:0.4rem;">Team Invitation</span>
+            <h2 style="margin:0.25rem 0 0.4rem; font-size:1.35rem; color:var(--text-main);">
+                You're joining <strong>{{ invited_team.name }}</strong>!
+            </h2>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-muted);">
+                {{ invited_team.season.name }} &bull; {{ invited_team.church.name|default:"Community Fellowship" }}
+            </p>
+            <p style="margin:0.75rem 0 0; font-size:0.85rem; color:var(--text-muted); border-top:1px dashed var(--border); padding-top:0.6rem;">
+                Already have an account?
+                <a href="{% url 'login' %}?next={% url 'join_team_invite' invited_team.invite_code %}" style="font-weight:600;">
+                    Log in to accept this invite &rarr;
+                </a>
+            </p>
+        </div>
+    {% endif %}
+
+    <div style="text-align:center; margin-bottom:1.5rem;">
+        <h1 style="margin:0 0 0.5rem; font-size:1.75rem;">
+            {% if invited_team %}Complete Your Roster Sign-Up{% else %}Create Your SportsBall Account{% endif %}
+        </h1>
+        <p style="margin:0; color:var(--text-muted); font-size:0.92rem;">
+            {% if invited_team %}
+                Sign up with your name and email to immediately join the team.
+            {% else %}
+                Fast, email-based registration. No confusing usernames required.
+            {% endif %}
+        </p>
+    </div>
+
+    <form method="post" novalidate>
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn" style="width:100%;">Create Account</button>
+        {% if invite_code %}
+            <input type="hidden" name="invite" value="{{ invite_code }}">
+        {% endif %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" style="margin-bottom:1.25rem; padding:0.75rem 1rem; border-radius:var(--radius); font-size:0.9rem;">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
+            <div>
+                <label for="{{ form.first_name.id_for_label }}" style="display:block; font-weight:600; margin-bottom:0.35rem; font-size:0.9rem;">First Name *</label>
+                {{ form.first_name }}
+                {% if form.first_name.errors %}
+                    <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.first_name.errors.0 }}</div>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.last_name.id_for_label }}" style="display:block; font-weight:600; margin-bottom:0.35rem; font-size:0.9rem;">Last Name *</label>
+                {{ form.last_name }}
+                {% if form.last_name.errors %}
+                    <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.last_name.errors.0 }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="margin-bottom:1rem;">
+            <label for="{{ form.email.id_for_label }}" style="display:block; font-weight:600; margin-bottom:0.35rem; font-size:0.9rem;">Email Address *</label>
+            {{ form.email }}
+            <small style="color:var(--text-muted); font-size:0.8rem; display:block; margin-top:0.25rem;">Used to sign in and receive game-day notices.</small>
+            {% if form.email.errors %}
+                <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.email.errors.0 }}</div>
+            {% endif %}
+        </div>
+
+        <div style="margin-bottom:1rem;">
+            <label for="{{ form.password1.id_for_label }}" style="display:block; font-weight:600; margin-bottom:0.35rem; font-size:0.9rem;">Password *</label>
+            {{ form.password1 }}
+            {% if form.password1.errors %}
+                <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.password1.errors.0 }}</div>
+            {% endif %}
+        </div>
+
+        <div style="margin-bottom:1.5rem;">
+            <label for="{{ form.password2.id_for_label }}" style="display:block; font-weight:600; margin-bottom:0.35rem; font-size:0.9rem;">Confirm Password *</label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}
+                <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.password2.errors.0 }}</div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-accent" style="width:100%; font-size:1.05rem; padding:0.75rem; font-weight:700;">
+            {% if invited_team %}
+                🎉 Create Account &amp; Join {{ invited_team.name }}
+            {% else %}
+                Create SportsBall Account
+            {% endif %}
+        </button>
     </form>
-    <p style="margin-top:1rem; text-align:center;">
-        Already registered? <a href="{% url 'login' %}">Log in here</a>
-    </p>
+
+    <div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border); text-align:center; font-size:0.9rem; color:var(--text-muted);">
+        {% if not invited_team %}
+            Already registered? <a href="{% url 'login' %}"><strong>Log in here</strong></a>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

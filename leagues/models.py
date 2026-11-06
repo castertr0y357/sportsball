@@ -243,15 +243,37 @@ class Team(models.Model):
     )
     team_color = models.CharField(max_length=50, blank=True, default='Navy Blue')
     dues_paid = models.BooleanField(default=False, help_text="Has team registration fee been paid?")
+    invite_code = models.CharField(
+        max_length=32,
+        unique=True,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Unique 1-tap player invite code"
+    )
 
     class Meta:
         ordering = ['name']
         unique_together = [('season', 'name')]
 
     def save(self, *args, **kwargs):
+        if not self.invite_code:
+            import secrets
+            self.invite_code = secrets.token_urlsafe(8)
         if self.season_id and not self.league_id:
             self.league = self.season.league
         super().save(*args, **kwargs)
+
+    def get_invite_url(self, request=None):
+        from django.urls import reverse
+        if not self.invite_code:
+            import secrets
+            self.invite_code = secrets.token_urlsafe(8)
+            self.save(update_fields=['invite_code'])
+        path = reverse('join_team_invite', kwargs={'invite_code': self.invite_code})
+        if request:
+            return request.build_absolute_uri(path)
+        return path
 
     def __str__(self):
         return f"{self.name} ({self.season.name})"

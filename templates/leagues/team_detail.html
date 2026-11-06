@@ -11,7 +11,7 @@
             &bull; Captain: {{ team.captain.display_name }}
         </p>
     </div>
-    <div style="display:flex; gap:0.5rem;">
+    <div style="display:flex; gap:0.5rem; align-items:center;">
         <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
         {% if user.is_authenticated and user not in team.players.all %}
             <form method="post" action="{% url 'join_team' team.id %}" style="margin:0;">
@@ -21,6 +21,74 @@
         {% endif %}
     </div>
 </div>
+
+{% if is_captain_or_admin %}
+<div class="card" style="background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(245,158,11,0.08)); border:1px solid rgba(37,99,235,0.25); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+        <div style="max-width:650px;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">
+                <span style="font-size:1.25rem;">⚡</span>
+                <h3 style="margin:0; font-size:1.15rem;">1-Click Player Invite Link</h3>
+                <span class="badge badge-primary" style="font-size:0.75rem;">Coach &amp; Admin Tool</span>
+            </div>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-muted);">
+                Share this link with players via text, WhatsApp, or email. They can sign up with just their name &amp; email (zero username friction) and will be instantly rostered to <strong>{{ team.name }}</strong>!
+            </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem; width:100%; max-width:500px;">
+            <input type="text" id="teamInviteUrlInput" value="{{ invite_url }}" readonly
+                style="flex:1; padding:0.55rem 0.75rem; font-size:0.85rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); font-family:monospace;"
+                onclick="this.select();">
+            <button type="button" class="btn btn-accent" id="copyInviteBtn" onclick="copyTeamInviteUrl()" style="white-space:nowrap; padding:0.55rem 1rem;">
+                📋 Copy Link
+            </button>
+            <button type="button" class="btn btn-secondary" id="shareInviteBtn" onclick="shareTeamInvite()" style="white-space:nowrap; padding:0.55rem 0.85rem;" title="Share via message or device apps">
+                💬 Share
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyTeamInviteUrl() {
+    const input = document.getElementById('teamInviteUrlInput');
+    input.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            const btn = document.getElementById('copyInviteBtn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '✓ Copied!';
+            btn.style.background = 'var(--success, #16a34a)';
+            setTimeout(() => {
+                btn.innerHTML = orig;
+                btn.style.background = '';
+            }, 2500);
+        }).catch(() => {
+            document.execCommand('copy');
+            alert('Invite link copied!');
+        });
+    } else {
+        document.execCommand('copy');
+        alert('Invite link copied!');
+    }
+}
+
+function shareTeamInvite() {
+    const url = document.getElementById('teamInviteUrlInput').value;
+    const title = "Join {{ team.name }} on SportsBall";
+    const text = "Hey! Join our {{ team.season.name }} roster on SportsBall. Sign up in seconds here: " + url;
+    if (navigator.share) {
+        navigator.share({
+            title: title,
+            text: text,
+            url: url
+        }).catch(() => {});
+    } else {
+        window.location.href = "sms:?body=" + encodeURIComponent(text);
+    }
+}
+</script>
+{% endif %}
 
 <div class="grid grid-2">
     <div class="card">

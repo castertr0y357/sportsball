@@ -1,19 +1,59 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from .models import CustomUser
 
 
 class CustomUserCreationForm(UserCreationForm):
-    email = forms.EmailField(required=True)
-    first_name = forms.CharField(max_length=150, required=False)
-    last_name = forms.CharField(max_length=150, required=False)
+    first_name = forms.CharField(
+        max_length=150,
+        required=True,
+        label="First Name",
+        widget=forms.TextInput(attrs={'placeholder': 'First Name', 'autocomplete': 'given-name'})
+    )
+    last_name = forms.CharField(
+        max_length=150,
+        required=True,
+        label="Last Name",
+        widget=forms.TextInput(attrs={'placeholder': 'Last Name', 'autocomplete': 'family-name'})
+    )
+    email = forms.EmailField(
+        required=True,
+        label="Email Address",
+        help_text="Used to sign in and receive game day notifications.",
+        widget=forms.EmailInput(attrs={'placeholder': 'you@example.com', 'autocomplete': 'email'})
+    )
 
     class Meta(UserCreationForm.Meta):
         model = CustomUser
-        fields = (
-            'username', 'email', 'first_name', 'last_name',
-            'role', 'church', 'phone', 'jersey_number', 'is_free_agent',
-        )
+        fields = ('first_name', 'last_name', 'email')
+
+    def clean_email(self):
+        email = self.cleaned_data.get('email', '').strip().lower()
+        if not email:
+            raise forms.ValidationError("Email address is required.")
+        if CustomUser.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("An account with this email address already exists. Please log in.")
+        return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        email = self.cleaned_data['email'].strip().lower()
+        user.email = email
+        user.username = email[:150]
+        if commit:
+            user.save()
+        return user
+
+
+class EmailAuthenticationForm(AuthenticationForm):
+    username = forms.CharField(
+        label="Email Address",
+        widget=forms.TextInput(attrs={
+            'placeholder': 'you@example.com',
+            'autocomplete': 'username email',
+            'autofocus': True
+        })
+    )
 
 
 class ProfileForm(forms.ModelForm):

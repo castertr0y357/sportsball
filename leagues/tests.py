@@ -382,3 +382,73 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         resp_member = self.client.get(reverse('practice_sandbox'))
         self.assertEqual(resp_member.status_code, 200)
 
+
+    def test_email_only_registration(self):
+        resp = self.client.post(reverse('register'), {
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'email': 'john.doe@fellowship.org',
+            'password1': 'Secret12345!',
+            'password2': 'Secret12345!',
+        })
+        self.assertEqual(resp.status_code, 302)
+        user = CustomUser.objects.get(email='john.doe@fellowship.org')
+        self.assertEqual(user.first_name, 'John')
+        self.assertEqual(user.last_name, 'Doe')
+        self.assertEqual(user.display_name, 'John Doe')
+
+        # Verify email login (both exact and case-insensitive)
+        self.client.logout()
+        logged_in = self.client.login(username='john.doe@fellowship.org', password='Secret12345!')
+        self.assertTrue(logged_in)
+        self.client.logout()
+        logged_in_upper = self.client.login(username='JOHN.DOE@FELLOWSHIP.ORG', password='Secret12345!')
+        self.assertTrue(logged_in_upper)
+
+    def test_coach_team_invite_authenticated_user(self):
+        self.client.login(username="player_user", password="password123")
+        invite_code = self.team1.invite_code
+        self.assertTrue(bool(invite_code))
+
+        # GET confirms invitation page
+        resp_get = self.client.get(reverse('join_team_invite', args=[invite_code]))
+        self.assertEqual(resp_get.status_code, 200)
+        self.assertContains(resp_get, self.team1.name)
+
+        # POST accepts and joins roster
+        resp_post = self.client.post(reverse('join_team_invite', args=[invite_code]))
+        self.assertEqual(resp_post.status_code, 302)
+        self.assertRedirects(resp_post, reverse('team_detail', args=[self.team1.id]))
+
+        self.team1.refresh_from_db()
+        self.assertIn(self.player_user, self.team1.players.all())
+        reg = SeasonRegistration.objects.get(season=self.season, player=self.player_user)
+        self.assertEqual(reg.status, 'approved')
+
+    def test_coach_team_invite_unauthenticated_new_user(self):
+        invite_code = self.team1.invite_code
+        # 1. Visiting invite URL as guest redirects to register with ?invite=
+        resp_guest = self.client.get(reverse('join_team_invite', args=[invite_code]))
+        self.assertEqual(resp_guest.status_code, 302)
+        self.assertIn(f"invite={invite_code}", resp_guest.url)
+
+        # 2. Registering with invite param automatically rosters the user
+        resp_reg = self.client.post(
+            f"{reverse('register')}?invite={invite_code}",
+            {
+                'first_name': 'Sarah',
+                'last_name': 'Connor',
+                'email': 'sarah@resistance.org',
+                'password1': 'SkynetDown2026!',
+                'password2': 'SkynetDown2026!',
+                'invite': invite_code,
+            }
+        )
+        self.assertEqual(resp_reg.status_code, 302)
+        self.assertRedirects(resp_reg, reverse('team_detail', args=[self.team1.id]))
+
+        new_user = CustomUser.objects.get(email='sarah@resistance.org')
+        self.team1.refresh_from_db()
+        self.assertIn(new_user, self.team1.players.all())
+        reg = SeasonRegistration.objects.get(season=self.season, player=new_user)
+        self.assertEqual(reg.status, 'approved')

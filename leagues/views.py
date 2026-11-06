@@ -129,13 +129,21 @@ def team_detail(request, team_id):
         .filter(team1=team) | Game.objects.filter(season=team.season).filter(team2=team)
     ).select_related('team1', 'team2').order_by('date')
     pending_requests = team.registration_requests.filter(status='pending').select_related('player')
-    is_captain_or_admin = (request.user == team.captain) or request.user.is_league_admin
+    is_captain_or_admin = (
+        request.user.is_authenticated and (
+            request.user == team.captain or
+            request.user.is_league_admin or
+            getattr(request.user, 'can_manage_teams', False)
+        )
+    )
+    invite_url = team.get_invite_url(request)
 
     return render(request, 'leagues/team_detail.html', {
         'team': team,
         'games': games,
         'pending_requests': pending_requests,
         'is_captain_or_admin': is_captain_or_admin,
+        'invite_url': invite_url,
     })
 
 
@@ -161,6 +169,45 @@ def join_team(request, team_id):
         )
         messages.success(request, f"You have joined '{team.name}'!")
     return redirect('team_detail', team_id=team.id)
+
+
+def join_team_by_invite(request, invite_code):
+    team = get_object_or_404(
+        Team.objects.select_related('league', 'season', 'church', 'captain').prefetch_related('players'),
+        invite_code=invite_code
+    )
+
+    if not request.user.is_authenticated:
+        from django.urls import reverse
+        return redirect(f"{reverse('register')}?invite={invite_code}")
+
+    if request.user in team.players.all():
+        messages.info(request, f"You are already on the roster for {team.name}!")
+        return redirect('team_detail', team_id=team.id)
+
+    if request.method == 'POST':
+        if team.players.count() >= team.season.max_roster_size:
+            messages.error(request, f"'{team.name}' has reached the maximum roster size ({team.season.max_roster_size}).")
+            return redirect('team_detail', team_id=team.id)
+
+        team.players.add(request.user)
+        request.user.is_free_agent = False
+        request.user.save(update_fields=['is_free_agent'])
+        SeasonRegistration.objects.update_or_create(
+            season=team.season,
+            player=request.user,
+            defaults={
+                'preferred_team': team,
+                'is_free_agent': False,
+                'status': 'approved',
+                'waiver_agreed': request.user.waiver_signed,
+            }
+        )
+        messages.success(request, f"You have joined {team.name}!")
+        return redirect('team_detail', team_id=team.id)
+
+    return render(request, 'leagues/join_team_confirm.html', {'team': team})
+
 
 
 @login_required

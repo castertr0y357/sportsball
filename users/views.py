@@ -6,21 +6,56 @@ from django.db.models import Sum, Count
 from .models import CustomUser
 from .forms import CustomUserCreationForm, ProfileForm, WaiverSignatureForm
 from stats.models import PlayerGameStat
+from leagues.models import Team, SeasonRegistration
 
 
 def register(request):
+    invite_code = request.GET.get('invite') or request.POST.get('invite')
+    invited_team = None
+    if invite_code:
+        invited_team = Team.objects.filter(invite_code=invite_code).select_related('season', 'league', 'church').first()
+
     if request.user.is_authenticated:
+        if invited_team:
+            return redirect('join_team_invite', invite_code=invite_code)
         return redirect('home')
+
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            login(request, user)
-            messages.success(request, f"Welcome to Church Sports Leagues, {user.display_name}!")
+            login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
+            if invited_team:
+                if invited_team.players.count() < invited_team.season.max_roster_size:
+                    invited_team.players.add(user)
+                    user.is_free_agent = False
+                    user.save(update_fields=['is_free_agent'])
+                    SeasonRegistration.objects.update_or_create(
+                        season=invited_team.season,
+                        player=user,
+                        defaults={
+                            'preferred_team': invited_team,
+                            'is_free_agent': False,
+                            'status': 'approved',
+                            'waiver_agreed': False,
+                        }
+                    )
+                    messages.success(request, f"Welcome to SportsBall, {user.first_name}! You've joined {invited_team.name}.")
+                    return redirect('team_detail', team_id=invited_team.id)
+                else:
+                    messages.warning(request, f"Welcome {user.first_name}! {invited_team.name} has reached its maximum roster size, but your account is ready.")
+                    return redirect('profile')
+
+            messages.success(request, f"Welcome to SportsBall, {user.first_name}!")
             return redirect('profile')
     else:
         form = CustomUserCreationForm()
-    return render(request, 'users/register.html', {'form': form})
+
+    return render(request, 'users/register.html', {
+        'form': form,
+        'invited_team': invited_team,
+        'invite_code': invite_code,
+    })
 
 
 @login_required
