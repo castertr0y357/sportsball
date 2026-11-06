@@ -24,7 +24,7 @@
     <div class="card">
         <h2>⚡ 1-Click Role Switcher</h2>
         <p style="font-size:0.88rem; color:var(--text-muted); margin-top:0;">
-            Click <strong>"Log In As"</strong> to instantly assume that persona and test their specific screens and permissions.
+            All test accounts use email-based login with password <code>sportsball123</code>. Click <strong>"Log In As"</strong> to instantly assume that persona.
         </p>
         <div style="display:grid; gap:0.75rem;">
             {% for item in catalog %}
@@ -33,19 +33,19 @@
                         <div style="font-weight:700; font-size:1rem;">
                             {{ item.name }}
                             <span class="badge {{ item.badge }}">{{ item.role }}</span>
-                            {% if user.is_authenticated and user.username == item.username %}
+                            {% if user.is_authenticated and user.email == item.email or user.username == item.username %}
                                 <span class="badge badge-success">&#10003; ACTIVE SESSION</span>
                             {% endif %}
                         </div>
-                        <small style="color:var(--text-muted); display:block; margin-top:0.2rem;">
-                            Username: <code>{{ item.username }}</code> &bull; {{ item.desc }}
+                        <small style="color:var(--text-muted); display:block; margin-top:0.25rem;">
+                            Email: <code>{{ item.email }}</code> &bull; {{ item.desc }}
                         </small>
                     </div>
                     <div>
                         {% if item.exists %}
                             <form method="post" action="{% url 'quick_switch_test_user' item.username %}" style="margin:0;">
                                 {% csrf_token %}
-                                <button type="submit" class="btn btn-sm {% if user.username == item.username %}btn-secondary{% else %}btn-accent{% endif %}">
+                                <button type="submit" class="btn btn-sm {% if user.email == item.email or user.username == item.username %}btn-secondary{% else %}btn-accent{% endif %}">
                                     Log In As &rarr;
                                 </button>
                             </form>
@@ -62,14 +62,14 @@
     <div class="card">
         <h2>+ Add Custom Test User In-App</h2>
         <p style="font-size:0.88rem; color:var(--text-muted); margin-top:0;">
-            Spawn any player, coach, or umpire on the fly without needing email confirmation.
+            Spawn any player, coach, or umpire on the fly using their email address &mdash; no email confirmation required.
         </p>
         <form method="post" action="{% url 'create_in_app_test_user' %}">
             {% csrf_token %}
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:0.75rem;">
                 <p>
-                    <label for="id_username">Username *</label>
-                    <input type="text" id="id_username" name="username" placeholder="e.g. coach_mike" required>
+                    <label for="id_email">Email Address *</label>
+                    <input type="email" id="id_email" name="email" placeholder="e.g. coach.mike@sportsball.local" required>
                 </p>
                 <p>
                     <label for="id_role">Role *</label>
@@ -128,7 +128,7 @@
                 </label>
             </div>
 
-            <button type="submit" class="btn" style="width:100%; margin-top:0.5rem;">
+            <button type="submit" class="btn btn-accent" style="width:100%; margin-top:0.5rem;">
                 Create Test User In-App
             </button>
         </form>

@@ -4,6 +4,7 @@ import math
 import struct
 import wave
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from core.models import Church, Announcement
@@ -98,92 +99,91 @@ class Command(BaseCommand):
             }
         )
 
-        admin_user, created = CustomUser.objects.get_or_create(
-            username="commissioner",
-            defaults={
-                'first_name': "Paul",
-                'last_name': "Andrews",
-                'email': "commissioner@churchleagues.org",
-                'role': 'admin',
-                'church': grace,
-                'jersey_number': 99,
-                'is_staff': True,
-                'is_superuser': True,
-                'waiver_signed': True,
-                'walkup_song_title': "Ballpark Organ Charge Fanfare",
-                'walkup_start_seconds': 0,
-                'walkup_duration_seconds': 5,
-            }
-        )
-        if created:
-            admin_user.set_password("league1234")
-            admin_user.save()
+        # Seed Core Commissioner with standardized email
+        admin_user = CustomUser.objects.filter(username="commissioner").first() or CustomUser.objects.filter(email="commissioner@sportsball.local").first()
+        if not admin_user:
+            admin_user = CustomUser(username="commissioner", email="commissioner@sportsball.local")
+        admin_user.first_name = "Paul"
+        admin_user.last_name = "Andrews"
+        admin_user.email = "commissioner@sportsball.local"
+        admin_user.role = 'admin'
+        admin_user.church = grace
+        admin_user.jersey_number = 99
+        admin_user.is_staff = True
+        admin_user.is_superuser = True
+        admin_user.waiver_signed = True
+        admin_user.waiver_signature = "Paul Andrews"
+        admin_user.walkup_song_title = "Ballpark Organ Charge Fanfare"
+        admin_user.walkup_start_seconds = 0
+        admin_user.walkup_duration_seconds = 5
+        admin_user.set_password("sportsball123")
+        admin_user.save()
 
+        # Seed Coaches with intuitive email logins
         coaches_data = [
-            ("coach_david", "David", "Miller", calvary, 23, "Eye of the Tiger (Organ Intro)"),
-            ("coach_luke", "Luke", "Vance", redeemer, 11, "Chariots of Fire Theme"),
-            ("coach_sarah", "Sarah", "Jenkins", hope, 7, "Centerfield Clap Riff"),
-            ("coach_caleb", "Caleb", "Brooks", grace, 34, "Victory Walk-Up Fanfare"),
+            ("coach_grace", "coach.grace@sportsball.local", "Caleb", "Brooks", grace, 34, "Victory Walk-Up Fanfare"),
+            ("coach_calvary", "coach.calvary@sportsball.local", "David", "Miller", calvary, 23, "Eye of the Tiger (Organ Intro)"),
+            ("coach_redeemer", "coach.redeemer@sportsball.local", "Luke", "Vance", redeemer, 11, "Chariots of Fire Theme"),
+            ("coach_hope", "coach.hope@sportsball.local", "Sarah", "Jenkins", hope, 7, "Centerfield Clap Riff"),
         ]
-        coaches = []
-        for uname, fname, lname, ch, jnum, song_title in coaches_data:
-            u, c = CustomUser.objects.get_or_create(
-                username=uname,
-                defaults={
-                    'first_name': fname,
-                    'last_name': lname,
-                    'email': f"{uname}@example.org",
-                    'role': 'coach',
-                    'church': ch,
-                    'jersey_number': jnum,
-                    'waiver_signed': True,
-                    'walkup_song_title': song_title,
-                    'walkup_start_seconds': 0,
-                    'walkup_duration_seconds': 6,
-                }
-            )
-            if c:
-                u.set_password("league1234")
+        coaches = {}
+        for uname, email, fname, lname, ch, jnum, song_title in coaches_data:
+            u = CustomUser.objects.filter(username=uname).first() or CustomUser.objects.filter(email__iexact=email).first()
+            if not u:
+                u = CustomUser(username=uname, email=email)
+            u.first_name = fname
+            u.last_name = lname
+            u.email = email
+            u.role = 'coach'
+            u.church = ch
+            u.jersey_number = jnum
+            u.waiver_signed = True
+            u.waiver_signature = f"{fname} {lname}"
+            u.walkup_song_title = song_title
+            u.walkup_start_seconds = 0
+            u.walkup_duration_seconds = 6
+            u.set_password("sportsball123")
             if not u.walkup_song_file:
                 wav_bytes = _generate_demo_walkup_wav(freqs=(293.66, 369.99, 440.00, 587.33), duration_sec=6)
                 u.walkup_song_file.save(f"{uname}_walkup.wav", ContentFile(wav_bytes), save=False)
             u.save()
-            coaches.append(u)
+            coaches[uname] = u
 
+        # Seed Players, Referees & Test Personas with email logins
         players_data = [
-            ("josh_p", "Josh", "Peterson", grace, 12, False, "Awesome God (Brass Riff)"),
-            ("micah_t", "Micah", "Thompson", calvary, 3, False, "Strike Up the Band"),
-            ("ethan_r", "Ethan", "Reed", redeemer, 21, False, "Home Run Organ Rally"),
-            ("noah_w", "Noah", "Williams", hope, 15, False, "Grand Slam Anthem"),
-            ("eli_free", "Eli", "Walker", grace, 9, True, ""),
-            ("hannah_free", "Hannah", "Collins", hope, 4, True, ""),
+            ("player_josh", "player.josh@sportsball.local", "Josh", "Peterson", grace, 12, False, True, "Awesome God (Brass Riff)"),
+            ("player_micah", "player.micah@sportsball.local", "Micah", "Thompson", calvary, 3, False, True, "Strike Up the Band"),
+            ("player_ethan", "player.ethan@sportsball.local", "Ethan", "Reed", redeemer, 21, False, True, "Home Run Organ Rally"),
+            ("player_sarah", "player.sarah@sportsball.local", "Sarah", "Collins", hope, 15, False, True, "Grand Slam Anthem"),
+            ("umpire_bob", "umpire.bob@sportsball.local", "Bob", "Jenkins", grace, None, False, True, ""),
+            ("free_agent_eli", "freeagent.eli@sportsball.local", "Eli", "Walker", grace, 9, True, False, ""),
+            ("free_agent_hannah", "freeagent.hannah@sportsball.local", "Hannah", "Davis", hope, 4, True, False, ""),
+            ("unverified_test", "unverified@sportsball.local", "Tommy", "Test", None, 18, False, False, ""),
         ]
-        players = []
-        for uname, fname, lname, ch, jnum, is_fa, song_title in players_data:
-            u, c = CustomUser.objects.get_or_create(
-                username=uname,
-                defaults={
-                    'first_name': fname,
-                    'last_name': lname,
-                    'email': f"{uname}@example.org",
-                    'role': 'player',
-                    'church': ch,
-                    'jersey_number': jnum,
-                    'is_free_agent': is_fa,
-                    'waiver_signed': not is_fa,
-                    'bio': "Excited for fellowship and good games this season!",
-                    'walkup_song_title': song_title,
-                    'walkup_start_seconds': 0,
-                    'walkup_duration_seconds': 6,
-                }
-            )
-            if c:
-                u.set_password("league1234")
+        players = {}
+        for uname, email, fname, lname, ch, jnum, is_fa, waiver, song_title in players_data:
+            u = CustomUser.objects.filter(username=uname).first() or CustomUser.objects.filter(email__iexact=email).first()
+            if not u:
+                u = CustomUser(username=uname, email=email)
+            u.first_name = fname
+            u.last_name = lname
+            u.email = email
+            u.role = 'referee' if 'umpire' in uname else 'player'
+            u.church = ch
+            u.jersey_number = jnum
+            u.is_free_agent = is_fa
+            u.waiver_signed = waiver
+            u.waiver_signature = f"{fname} {lname}" if waiver else ""
+            u.bio = "Excited for fellowship and good sportsmanship this season!"
+            u.walkup_song_title = song_title
+            u.walkup_start_seconds = 0
+            u.walkup_duration_seconds = 6
+            u.set_password("sportsball123")
             if song_title and not u.walkup_song_file:
                 wav_bytes = _generate_demo_walkup_wav(freqs=(261.63, 329.63, 392.00, 523.25), duration_sec=6)
                 u.walkup_song_file.save(f"{uname}_walkup.wav", ContentFile(wav_bytes), save=False)
             u.save()
-            players.append(u)
+            players[uname] = u
 
         bball_league, _ = League.objects.get_or_create(
             name="Men's & Co-Ed Fellowship Basketball",
@@ -237,12 +237,19 @@ class Command(BaseCommand):
             defaults={
                 'league': softball_league,
                 'church': grace,
-                'captain': coaches[3],
+                'captain': coaches['coach_grace'],
                 'team_color': "Royal Blue",
                 'dues_paid': True,
             }
         )
-        sb_grace.players.add(coaches[3], players[0], admin_user)
+        sb_grace.captain = coaches['coach_grace']
+        sb_grace.players.add(coaches['coach_grace'], players['player_josh'], admin_user)
+        sb_grace.save(update_fields=['captain'])
+        SeasonRegistration.objects.update_or_create(
+            season=softball_season,
+            player=players['player_josh'],
+            defaults={'preferred_team': sb_grace, 'status': 'approved', 'waiver_agreed': True}
+        )
 
         sb_calvary, _ = Team.objects.get_or_create(
             season=softball_season,
@@ -250,12 +257,19 @@ class Command(BaseCommand):
             defaults={
                 'league': softball_league,
                 'church': calvary,
-                'captain': coaches[0],
+                'captain': coaches['coach_calvary'],
                 'team_color': "Crimson Red",
                 'dues_paid': True,
             }
         )
-        sb_calvary.players.add(coaches[0], players[1])
+        sb_calvary.captain = coaches['coach_calvary']
+        sb_calvary.players.add(coaches['coach_calvary'], players['player_micah'])
+        sb_calvary.save(update_fields=['captain'])
+        SeasonRegistration.objects.update_or_create(
+            season=softball_season,
+            player=players['player_micah'],
+            defaults={'preferred_team': sb_calvary, 'status': 'approved', 'waiver_agreed': True}
+        )
 
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         if not softball_season.games.exists():
@@ -284,4 +298,7 @@ class Command(BaseCommand):
             sb_game.log_play("Grace Sluggers rally in the bottom of the 3rd with runners on the corners!")
             sb_game.save()
 
-        self.stdout.write(self.style.SUCCESS("Successfully seeded Church Sports Leagues & Walk-Up Dugout Console demo data!"))
+        # Run create_test_users to guarantee full sync and linking
+        call_command('create_test_users')
+
+        self.stdout.write(self.style.SUCCESS("Successfully seeded Church Sports Leagues & Walk-Up Dugout Console demo data with email logins!"))

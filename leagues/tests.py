@@ -452,3 +452,35 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertIn(new_user, self.team1.players.all())
         reg = SeasonRegistration.objects.get(season=self.season, player=new_user)
         self.assertEqual(reg.status, 'approved')
+
+    def test_seeded_test_accounts_email_logins(self):
+        from django.core.management import call_command
+        call_command('create_test_users')
+
+        test_accounts = [
+            ('commissioner@sportsball.local', 'sportsball123', 'Paul Andrews'),
+            ('coach.grace@sportsball.local', 'sportsball123', 'Caleb Brooks'),
+            ('coach.calvary@sportsball.local', 'sportsball123', 'David Miller'),
+            ('umpire.bob@sportsball.local', 'sportsball123', 'Bob Jenkins'),
+            ('player.josh@sportsball.local', 'sportsball123', 'Josh Peterson'),
+            ('freeagent.eli@sportsball.local', 'sportsball123', 'Eli Walker'),
+            ('unverified@sportsball.local', 'sportsball123', 'Tommy Test'),
+        ]
+
+        for email, pwd, expected_name in test_accounts:
+            self.client.logout()
+            logged_in = self.client.login(username=email, password=pwd)
+            self.assertTrue(logged_in, f"Failed to login with email: {email}")
+
+        # Test testing portal shows all accounts as created with their emails
+        resp = self.client.get(reverse('test_users_portal'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "Not Created")
+        self.assertContains(resp, "coach.grace@sportsball.local")
+        self.assertContains(resp, "commissioner@sportsball.local")
+
+        # Test 1-click switch by username or email
+        switch_resp = self.client.post(reverse('quick_switch_test_user', args=['coach_grace']))
+        self.assertEqual(switch_resp.status_code, 302)
+        switch_email_resp = self.client.post(reverse('quick_switch_test_user', args=['coach.calvary@sportsball.local']))
+        self.assertEqual(switch_email_resp.status_code, 302)

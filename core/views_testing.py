@@ -4,6 +4,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
+from django.db.models import Q
 from users.models import CustomUser
 from core.models import Church
 
@@ -11,6 +12,7 @@ from core.models import Church
 TEST_ROLES_CATALOG = [
     {
         'username': 'commissioner',
+        'email': 'commissioner@sportsball.local',
         'name': 'Paul Andrews (Commissioner)',
         'role': 'League Admin',
         'badge': 'badge-danger',
@@ -18,6 +20,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'coach_grace',
+        'email': 'coach.grace@sportsball.local',
         'name': 'Caleb Brooks (Grace Coach)',
         'role': 'Coach / Captain',
         'badge': 'badge-primary',
@@ -25,6 +28,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'coach_calvary',
+        'email': 'coach.calvary@sportsball.local',
         'name': 'David Miller (Calvary Coach)',
         'role': 'Coach / Captain',
         'badge': 'badge-primary',
@@ -32,6 +36,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'umpire_bob',
+        'email': 'umpire.bob@sportsball.local',
         'name': 'Bob Jenkins (Umpire / Ref)',
         'role': 'Referee / Scorekeeper',
         'badge': 'badge-warning',
@@ -39,6 +44,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'player_josh',
+        'email': 'player.josh@sportsball.local',
         'name': 'Josh Peterson (Player)',
         'role': 'Rostered Player',
         'badge': 'badge-success',
@@ -46,6 +52,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'free_agent_eli',
+        'email': 'freeagent.eli@sportsball.local',
         'name': 'Eli Walker (Free Agent)',
         'role': 'Free Agent',
         'badge': 'badge',
@@ -53,6 +60,7 @@ TEST_ROLES_CATALOG = [
     },
     {
         'username': 'unverified_test',
+        'email': 'unverified@sportsball.local',
         'name': 'Tommy Test (No Waiver)',
         'role': 'Unsigned Player',
         'badge': 'badge-warning',
@@ -65,23 +73,30 @@ def test_users_portal(request):
     """
     In-App Test User Portal:
     - View, create, and 1-click switch between test accounts without terminal commands.
-    - Add custom test players/coaches directly from the browser on Kubernetes.
+    - All test accounts login with email addresses and password 'sportsball123'.
     """
-    # Auto-seed basic test users if none exist yet
-    if not CustomUser.objects.filter(username__in=['commissioner', 'coach_grace']).exists():
+    required_emails = [r['email'] for r in TEST_ROLES_CATALOG]
+    existing_count = CustomUser.objects.filter(
+        Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
+    ).count()
+
+    # Auto-seed all test accounts if ANY are missing
+    if existing_count < len(TEST_ROLES_CATALOG):
         try:
             call_command('create_test_users')
         except Exception:
             pass
 
     test_users = CustomUser.objects.filter(
-        username__in=[r['username'] for r in TEST_ROLES_CATALOG]
+        Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
     ).select_related('church')
-    users_by_uname = {u.username: u for u in test_users}
+
+    users_by_email = {u.email.lower(): u for u in test_users}
+    users_by_uname = {u.username.lower(): u for u in test_users}
 
     catalog = []
     for item in TEST_ROLES_CATALOG:
-        user_obj = users_by_uname.get(item['username'])
+        user_obj = users_by_email.get(item['email'].lower()) or users_by_uname.get(item['username'].lower())
         catalog.append({
             **item,
             'user': user_obj,
@@ -102,8 +117,15 @@ def quick_switch_test_user(request, username):
     if request.method != 'POST':
         return redirect('test_users_portal')
 
-    user = get_object_or_404(CustomUser, username=username)
-    login(request, user)
+    user = CustomUser.objects.filter(
+        Q(username__iexact=username) | Q(email__iexact=username)
+    ).first()
+
+    if not user:
+        messages.error(request, f"User '{username}' not found.")
+        return redirect('test_users_portal')
+
+    login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
     messages.success(request, f"⚡ Switched active session to {user.display_name} ({user.get_role_display()})!")
     return redirect('home')
 
@@ -111,7 +133,7 @@ def quick_switch_test_user(request, username):
 def create_in_app_test_user(request):
     """Create a new custom test user directly from the web browser without email confirmation."""
     if request.method == 'POST':
-        username = request.POST.get('username', '').strip().lower()
+        email = request.POST.get('email', '').strip().lower()
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
         role = request.POST.get('role', 'player')
@@ -122,21 +144,21 @@ def create_in_app_test_user(request):
         is_free_agent = bool(request.POST.get('is_free_agent'))
         walkup_title = request.POST.get('walkup_song_title', '').strip()
 
-        if not username:
-            messages.error(request, "Username is required.")
+        if not email:
+            messages.error(request, "Email address is required.")
             return redirect('test_users_portal')
 
-        if CustomUser.objects.filter(username=username).exists():
-            messages.error(request, f"User '{username}' already exists.")
+        if CustomUser.objects.filter(email__iexact=email).exists():
+            messages.error(request, f"User with email '{email}' already exists.")
             return redirect('test_users_portal')
 
         church = Church.objects.filter(id=church_id).first() if church_id else None
 
         user = CustomUser.objects.create(
-            username=username,
+            username=email[:150],
+            email=email,
             first_name=first_name,
             last_name=last_name,
-            email=f"{username}@sportsball.local",
             role=role,
             church=church,
             jersey_number=int(jersey) if jersey and jersey.isdigit() else None,
@@ -152,11 +174,11 @@ def create_in_app_test_user(request):
 
         # Auto-login as the freshly created user if requested
         if request.POST.get('auto_login'):
-            login(request, user)
+            login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
             messages.success(request, f"Created and logged in as {user.display_name}!")
             return redirect('home')
 
-        messages.success(request, f"Test user '{user.username}' created successfully!")
+        messages.success(request, f"Test user '{user.email}' created successfully!")
     return redirect('test_users_portal')
 
 

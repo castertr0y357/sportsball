@@ -16,8 +16,13 @@ class EmailOrUsernameModelBackend(ModelBackend):
         if not username or not password:
             return None
 
+        username_clean = str(username).strip()
+        prefix = username_clean.split('@')[0] if '@' in username_clean else username_clean
+
         user = UserModel.objects.filter(
-            Q(email__iexact=username) | Q(username__iexact=username)
+            Q(email__iexact=username_clean) |
+            Q(username__iexact=username_clean) |
+            Q(username__iexact=prefix)
         ).first()
 
         if user and user.check_password(password) and self.user_can_authenticate(user):
