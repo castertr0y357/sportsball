@@ -97,26 +97,53 @@ def team_list(request, season_id):
 
 @login_required
 def create_team(request, season_id):
+    from core.models import Church
     season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
-    if not request.user.can_manage_teams:
-        messages.error(request, "You don't have permission to create teams.")
-        return redirect('team_list', season_id=season_id)
+    user = request.user
+
+    # Option A: Church Commissioners register teams for their church and designate Team Captains
+    if not (user.is_league_admin or user.is_church_commissioner or user.role in ('coach', 'church_admin')):
+        messages.error(request, "Only Church Commissioners or League Administrators can register teams in a season.")
+        return redirect('season_detail', season_id=season.id)
+
+    target_church = None
+    church_id = request.GET.get('church_id')
+    if church_id:
+        target_church = Church.objects.filter(id=church_id).first()
+    if not target_church:
+        target_church = user.managed_churches.first() or user.church
 
     if request.method == 'POST':
-        form = TeamForm(request.POST)
+        form = TeamForm(request.POST, user=user, target_church=target_church)
         if form.is_valid():
             team = form.save(commit=False)
             team.season = season
             team.league = season.league
             team.save()
-            form.save_m2m()
-            if team.captain and not team.players.filter(id=team.captain_id).exists():
+
+            if team.captain:
                 team.players.add(team.captain)
-            messages.success(request, f"Team '{team.name}' created successfully.")
-            return redirect('team_list', season_id=season_id)
+                SeasonRegistration.objects.update_or_create(
+                    season=season,
+                    player=team.captain,
+                    defaults={
+                        'preferred_team': team,
+                        'status': 'approved',
+                        'waiver_agreed': team.captain.waiver_signed,
+                    }
+                )
+            messages.success(request, f"Team '{team.name}' registered successfully! The Team Captain can now invite players.")
+            return redirect('team_detail', team_id=team.id)
     else:
-        form = TeamForm(initial={'captain': request.user, 'church': request.user.church})
-    return render(request, 'leagues/create_team.html', {'form': form, 'season': season})
+        form = TeamForm(user=user, target_church=target_church, initial={
+            'church': target_church,
+            'captain': user if user.role == 'coach' else None,
+        })
+    return render(request, 'leagues/create_team.html', {
+        'form': form,
+        'season': season,
+        'target_church': target_church,
+    })
 
 
 def team_detail(request, team_id):

@@ -1,32 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Partner Churches | Church Sports Leagues{% endblock %}
+{% block title %}Partner Church Directory | SportsBall Administration{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
+        <span class="badge badge-danger">League Administration</span>
         <h1>Partner Church Directory</h1>
-        <p style="margin:0; color:var(--text-muted);">Local congregations participating in fellowship sports leagues</p>
+        <p style="margin:0; color:var(--text-muted);">Master directory of participating congregations, designated commissioners, and annual dues</p>
     </div>
-    {% if user.is_authenticated and user.can_manage_teams %}
-        <a href="{% url 'create_church' %}" class="btn">+ Add Partner Church</a>
+    {% if user.is_authenticated and user.is_league_admin %}
+        <a href="{% url 'create_church' %}" class="btn btn-accent">+ Add Partner Church</a>
     {% endif %}
 </div>
 
 <div class="grid grid-3">
     {% for church in churches %}
         <div class="card">
-            <h3><a href="{% url 'church_detail' church.id %}">{{ church.name }}</a></h3>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
+                <h3 style="margin:0;"><a href="{% url 'church_detail' church.id %}">{{ church.name }}</a></h3>
+                {% if church.dues_paid %}
+                    <span class="badge badge-success">&#10003; Dues Paid</span>
+                {% else %}
+                    <span class="badge badge-warning">Dues Pending</span>
+                {% endif %}
+            </div>
+
             {% if church.denomination %}
-                <span class="badge badge-primary">{{ church.denomination }}</span>
+                <span class="badge badge-primary" style="margin-bottom:0.5rem;">{{ church.denomination }}</span>
             {% endif %}
-            <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0;">
+
+            <p style="color:var(--text-muted); font-size:0.88rem; margin:0.4rem 0;">
                 {% if church.city or church.state %}{{ church.city }}{% if church.city and church.state %}, {% endif %}{{ church.state }}<br>{% endif %}
-                {% if church.pastor_or_contact %}Contact: {{ church.pastor_or_contact }}{% endif %}
+                Commissioner: <strong>{{ church.commissioner.display_name|default:"Unassigned" }}</strong>
             </p>
-            <p>{{ church.description|truncatewords:25 }}</p>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem;">
+
+            <p style="font-size:0.9rem;">{{ church.description|truncatewords:20 }}</p>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; padding-top:0.6rem; border-top:1px solid var(--border);">
                 <span class="badge">{{ church.teams.count }} Teams &bull; {{ church.members.count }} Members</span>
-                <a href="{% url 'church_detail' church.id %}" class="btn btn-sm btn-secondary">View Church</a>
+                <a href="{% url 'church_detail' church.id %}" class="btn btn-sm btn-secondary">Manage Church &rarr;</a>
             </div>
         </div>
     {% empty %}

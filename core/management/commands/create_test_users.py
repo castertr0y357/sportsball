@@ -7,8 +7,8 @@ from leagues.models import Team, SeasonRegistration
 TEST_USERS = [
     # (username, email, password, first_name, last_name, role, church_name, jersey, walkup_title, is_fa, waiver)
     ("commissioner", "commissioner@sportsball.local", "sportsball123", "Paul", "Andrews", "admin", "Grace Fellowship Church", 99, "Ballpark Organ Fanfare", False, True),
-    ("coach_grace", "coach.grace@sportsball.local", "sportsball123", "Caleb", "Brooks", "coach", "Grace Fellowship Church", 34, "Victory Walk-Up Fanfare", False, True),
-    ("coach_calvary", "coach.calvary@sportsball.local", "sportsball123", "David", "Miller", "coach", "Calvary Baptist Church", 23, "Eye of the Tiger (Intro)", False, True),
+    ("coach_grace", "coach.grace@sportsball.local", "sportsball123", "Caleb", "Brooks", "church_admin", "Grace Fellowship Church", 34, "Victory Walk-Up Fanfare", False, True),
+    ("coach_calvary", "coach.calvary@sportsball.local", "sportsball123", "David", "Miller", "church_admin", "Calvary Baptist Church", 23, "Eye of the Tiger (Intro)", False, True),
     ("coach_redeemer", "coach.redeemer@sportsball.local", "sportsball123", "Luke", "Vance", "coach", "Redeemer Presbyterian", 11, "Chariots of Fire Theme", False, True),
     ("umpire_bob", "umpire.bob@sportsball.local", "sportsball123", "Bob", "Jenkins", "referee", "Grace Fellowship Church", None, "", False, True),
     ("player_josh", "player.josh@sportsball.local", "sportsball123", "Josh", "Peterson", "player", "Grace Fellowship Church", 12, "Awesome God (Brass Riff)", False, True),
@@ -72,7 +72,7 @@ class Command(BaseCommand):
             user.walkup_song_title = song_title
             user.walkup_start_seconds = 0
             user.walkup_duration_seconds = 10
-            user.is_staff = (role == 'admin')
+            user.is_staff = (role in ('admin', 'committee'))
             user.is_superuser = (role == 'admin')
             user.set_password(password)
             user.save()
@@ -82,6 +82,20 @@ class Command(BaseCommand):
                 created_count += 1
             else:
                 updated_count += 1
+
+        # Designate Church Commissioners and Dues on partner churches
+        grace_church = Church.objects.filter(name__icontains="Grace Fellowship").first()
+        calvary_church = Church.objects.filter(name__icontains="Calvary Baptist").first()
+
+        if grace_church and user_objects.get("coach_grace"):
+            grace_church.commissioner = user_objects.get("coach_grace")
+            grace_church.dues_paid = True
+            grace_church.save(update_fields=['commissioner', 'dues_paid'])
+
+        if calvary_church and user_objects.get("coach_calvary"):
+            calvary_church.commissioner = user_objects.get("coach_calvary")
+            calvary_church.dues_paid = True
+            calvary_church.save(update_fields=['commissioner', 'dues_paid'])
 
         # Automatically link test users to teams and rosters if demo teams exist
         grace_sluggers = Team.objects.filter(name__icontains="Grace Sluggers").first()
@@ -124,11 +138,11 @@ class Command(BaseCommand):
             f"Done! {created_count} test users created, {updated_count} test users updated.\n"
             f"Universal Password: '{password}'\n\n"
             f"Ready-to-use Email Accounts:\n"
-            f" • Commissioner / Admin  : commissioner@sportsball.local\n"
-            f" • Grace Sluggers Coach  : coach.grace@sportsball.local\n"
-            f" • Calvary Coach         : coach.calvary@sportsball.local\n"
-            f" • Umpire / Referee      : umpire.bob@sportsball.local\n"
-            f" • Rostered Player       : player.josh@sportsball.local\n"
-            f" • Free Agent Player     : freeagent.eli@sportsball.local\n"
-            f" • Unsigned Waiver Test  : unverified@sportsball.local\n"
+            f" • Overall Commissioner   : commissioner@sportsball.local\n"
+            f" • Grace Church Commish   : coach.grace@sportsball.local\n"
+            f" • Calvary Church Commish : coach.calvary@sportsball.local\n"
+            f" • Umpire / Referee       : umpire.bob@sportsball.local\n"
+            f" • Rostered Player        : player.josh@sportsball.local\n"
+            f" • Free Agent Player      : freeagent.eli@sportsball.local\n"
+            f" • Unsigned Waiver Test   : unverified@sportsball.local\n"
         ))

@@ -180,10 +180,12 @@
                     <span class="sidebar-icon">&#127942;</span>
                     <span class="sidebar-text">Leagues &amp; Seasons</span>
                 </a>
-                <a href="{% url 'church_list' %}" class="sidebar-link {% if 'church' in request.resolver_match.url_name %}active{% endif %}">
+                {% if user.is_authenticated %}
+                <a href="{% url 'my_church' %}" class="sidebar-link {% if 'church' in request.resolver_match.url_name and request.resolver_match.url_name != 'church_list' %}active{% endif %}">
                     <span class="sidebar-icon">&#9962;</span>
-                    <span class="sidebar-text">Partner Churches</span>
+                    <span class="sidebar-text">My Church</span>
                 </a>
+                {% endif %}
 
                 {% if user.is_authenticated %}
                 <div class="sidebar-section-label">Member Hub</div>
@@ -199,6 +201,14 @@
                     <span class="sidebar-icon">&#128226;</span>
                     <span class="sidebar-text">Announcements</span>
                 </a>
+
+                {% if user.is_league_admin %}
+                <div class="sidebar-section-label">Administration</div>
+                <a href="{% url 'church_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'church_list' or request.resolver_match.url_name == 'create_church' %}active{% endif %}">
+                    <span class="sidebar-icon">&#127963;</span>
+                    <span class="sidebar-text">Partner Churches Directory</span>
+                </a>
+                {% endif %}
 
                 <div class="sidebar-section-label">Volunteer &amp; Testing</div>
                 <a href="{% url 'practice_sandbox' %}" class="sidebar-link {% if request.resolver_match.url_name == 'practice_sandbox' %}active{% endif %}">

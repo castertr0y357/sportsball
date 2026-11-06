@@ -8,7 +8,7 @@ class ChurchForm(forms.ModelForm):
         fields = [
             'name', 'denomination', 'address', 'city', 'state',
             'pastor_or_contact', 'contact_email', 'contact_phone',
-            'website', 'description',
+            'website', 'description', 'commissioner', 'dues_paid',
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
@@ -20,7 +20,7 @@ class AnnouncementForm(forms.ModelForm):
         model = Announcement
         fields = [
             'title', 'category', 'content', 'scripture_reference',
-            'league', 'season', 'is_pinned', 'is_urgent',
+            'league', 'season', 'is_urgent',
         ]
         widgets = {
             'content': forms.Textarea(attrs={'rows': 4}),

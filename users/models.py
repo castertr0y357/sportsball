@@ -7,12 +7,15 @@ from django.utils import timezone
 class CustomUser(AbstractUser):
     ROLE_CHOICES = [
         ('player', 'Player'),
-        ('coach', 'Coach / Captain'),
+        ('coach', 'Team Captain / Coach'),
+        ('church_admin', 'Church Commissioner'),
         ('referee', 'Referee / Scorekeeper'),
-        ('admin', 'League Admin'),
+        ('league_admin', 'League Commissioner'),
+        ('committee', 'Program Committee'),
+        ('admin', 'Overall Commissioner'),
     ]
 
-    role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='player')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='player')
     church = models.ForeignKey(
         'core.Church',
         on_delete=models.SET_NULL,
@@ -63,16 +66,57 @@ class CustomUser(AbstractUser):
         self.save(update_fields=['waiver_signed', 'waiver_signed_at', 'waiver_signature'])
 
     @property
+    def is_overall_commissioner(self):
+        """Cross-league management: creates leagues, invites churches, approves bylaws."""
+        return self.role in ('admin', 'committee') or self.is_superuser or self.is_staff
+
+    @property
     def is_league_admin(self):
-        return self.role == 'admin' or self.is_superuser or self.is_staff
+        """Covers Overall Commissioners, Committee, and League-level admins."""
+        return self.role in ('admin', 'committee', 'league_admin') or self.is_superuser or self.is_staff
+
+    @property
+    def is_church_commissioner(self):
+        """Covers Church Commissioners who represent/lead a church sports program."""
+        return (
+            self.is_overall_commissioner or
+            self.role == 'church_admin' or
+            self.managed_churches.exists()
+        )
+
+    def can_manage_church(self, church):
+        if not church:
+            return False
+        if self.is_overall_commissioner:
+            return True
+        return (
+            church.commissioner_id == self.id or
+            (self.church_id == church.id and self.role == 'church_admin')
+        )
+
+    def can_manage_league(self, league):
+        if not league:
+            return False
+        if self.is_overall_commissioner:
+            return True
+        return league.admin_id == self.id
 
     @property
     def can_manage_teams(self):
-        return self.role in ('admin', 'coach') or self.is_superuser or self.is_staff
+        return (
+            self.is_league_admin or
+            self.is_church_commissioner or
+            self.role == 'coach' or
+            self.captained_teams.exists()
+        )
 
     @property
     def can_record_scores(self):
-        return self.role in ('admin', 'referee', 'coach') or self.is_superuser or self.is_staff
+        return (
+            self.is_league_admin or
+            self.role in ('referee', 'coach') or
+            self.captained_teams.exists()
+        )
 
     @property
     def display_name(self):

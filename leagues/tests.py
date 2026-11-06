@@ -90,9 +90,16 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Rainout Alert")
 
-        resp_churches = self.client.get(reverse('church_list'))
-        self.assertEqual(resp_churches.status_code, 200)
-        self.assertContains(resp_churches, "First Baptist Fellowship")
+        # Unauthenticated users cannot view partner church directory
+        resp_guest_churches = self.client.get(reverse('church_list'))
+        self.assertEqual(resp_guest_churches.status_code, 302)
+        self.assertRedirects(resp_guest_churches, reverse('home'))
+
+        # Overall / League admins can access partner church directory
+        self.client.login(username="admin_user", password="password123")
+        resp_admin_churches = self.client.get(reverse('church_list'))
+        self.assertEqual(resp_admin_churches.status_code, 200)
+        self.assertContains(resp_admin_churches, "First Baptist Fellowship")
 
     def test_waiver_signing_and_profile(self):
         self.client.login(username="player_user", password="password123")
@@ -484,3 +491,76 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(switch_resp.status_code, 302)
         switch_email_resp = self.client.post(reverse('quick_switch_test_user', args=['coach.calvary@sportsball.local']))
         self.assertEqual(switch_email_resp.status_code, 302)
+
+    def test_church_directory_access_control_and_my_church(self):
+        # 1. Unauthenticated guest -> redirects to home
+        resp_guest = self.client.get(reverse('church_list'))
+        self.assertEqual(resp_guest.status_code, 302)
+        self.assertRedirects(resp_guest, reverse('home'))
+
+        # 2. Regular player with home church visiting church_list -> redirected to my_church -> church_detail
+        self.client.login(username="player_user", password="password123")
+        resp_player = self.client.get(reverse('church_list'))
+        self.assertEqual(resp_player.status_code, 302)
+        self.assertRedirects(resp_player, reverse('my_church'), target_status_code=302)
+
+        resp_my_church = self.client.get(reverse('my_church'))
+        self.assertEqual(resp_my_church.status_code, 302)
+        self.assertRedirects(resp_my_church, reverse('church_detail', args=[self.church.id]))
+
+        # 3. Regular player with NO church gets church selector
+        self.player_user.church = None
+        self.player_user.save(update_fields=['church'])
+        resp_select = self.client.get(reverse('my_church'))
+        self.assertEqual(resp_select.status_code, 200)
+        self.assertContains(resp_select, "Connect to Your Church")
+
+    def test_church_commissioner_creates_team_and_designates_captain(self):
+        # Assign coach_user as Church Commissioner for First Baptist Fellowship
+        self.church.commissioner = self.coach_user
+        self.coach_user.role = 'church_admin'
+        self.coach_user.save()
+        self.church.save()
+
+        self.client.login(username="coach_user", password="password123")
+        self.assertTrue(self.coach_user.is_church_commissioner)
+
+        # Church Commissioner creates team for their church and designates player_user as Captain
+        resp_create = self.client.post(
+            reverse('create_team', args=[self.season.id]),
+            {
+                'name': 'Grace Warriors',
+                'church': self.church.id,
+                'captain': self.player_user.id,
+                'team_color': 'Navy Blue',
+            }
+        )
+        self.assertEqual(resp_create.status_code, 302)
+
+        warriors = Team.objects.get(name='Grace Warriors', season=self.season)
+        self.assertEqual(warriors.church, self.church)
+        self.assertEqual(warriors.captain, self.player_user)
+        self.assertIn(self.player_user, warriors.players.all())
+
+        # Verify season registration auto-created for designated captain
+        reg = SeasonRegistration.objects.get(season=self.season, player=self.player_user)
+        self.assertEqual(reg.status, 'approved')
+
+    def test_overall_commissioner_assigns_church_leader_and_dues(self):
+        self.client.login(username="admin_user", password="password123")
+
+        # Assign coach_user as Church Commissioner
+        resp_assign = self.client.post(
+            reverse('assign_church_commissioner', args=[self.church.id]),
+            {'commissioner_id': self.coach_user.id}
+        )
+        self.assertEqual(resp_assign.status_code, 302)
+        self.church.refresh_from_db()
+        self.assertEqual(self.church.commissioner, self.coach_user)
+
+        # Toggle dues to paid
+        self.assertFalse(self.church.dues_paid)
+        resp_dues = self.client.post(reverse('toggle_church_dues', args=[self.church.id]))
+        self.assertEqual(resp_dues.status_code, 302)
+        self.church.refresh_from_db()
+        self.assertTrue(self.church.dues_paid)

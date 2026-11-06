@@ -1,52 +1,195 @@
 {% extends "base.html" %}
-{% block title %}{{ church.name }} | Church Sports Leagues{% endblock %}
+{% block title %}{{ church.name }} | Church Hub{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>{{ church.name }}</h1>
-        {% if church.denomination %}<span class="badge badge-primary">{{ church.denomination }}</span>{% endif %}
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
+            <h1>{{ church.name }}</h1>
+            {% if church.denomination %}<span class="badge badge-primary">{{ church.denomination }}</span>{% endif %}
+            {% if church.dues_paid %}
+                <span class="badge badge-success">&#10003; League Dues Current</span>
+            {% else %}
+                <span class="badge badge-warning">&#9888; Dues Pending</span>
+            {% endif %}
+        </div>
+        <p style="margin:0; color:var(--text-muted); font-size:0.95rem;">
+            Church Commissioner: <strong>{{ church.commissioner.display_name|default:"Unassigned" }}</strong>
+            {% if church.city or church.state %}&bull; {{ church.city }}, {{ church.state }}{% endif %}
+        </p>
     </div>
-    <a href="{% url 'church_list' %}" class="btn btn-secondary">&larr; All Churches</a>
+    <div style="display:flex; gap:0.5rem;">
+        {% if user.is_league_admin %}
+            <a href="{% url 'church_list' %}" class="btn btn-secondary">&larr; Partner Churches</a>
+        {% else %}
+            <a href="{% url 'home' %}" class="btn btn-secondary">&larr; Dashboard</a>
+        {% endif %}
+    </div>
 </div>
 
+{% if is_church_commish %}
+<!-- Church Commissioner Command Hub -->
+<div class="card" style="background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(16,185,129,0.08)); border:1px solid rgba(37,99,235,0.25); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">
+                <span style="font-size:1.35rem;">⛪</span>
+                <h3 style="margin:0; font-size:1.2rem;">Church Commissioner Command Center</h3>
+                <span class="badge badge-primary">Your Leadership Role</span>
+            </div>
+            <p style="margin:0; font-size:0.92rem; color:var(--text-muted); max-width:650px;">
+                As the Church Commissioner for <strong>{{ church.name }}</strong>, you manage your congregation's sports teams, register for upcoming seasons, and designate team captains.
+            </p>
+        </div>
+        <div>
+            {% if open_seasons %}
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    {% for s in open_seasons %}
+                        <a href="{% url 'create_team' s.id %}?church_id={{ church.id }}" class="btn btn-accent btn-sm" style="font-weight:700;">
+                            + Register Team in {{ s.name }} &rarr;
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <span class="badge">No active open registrations</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if is_overall_commish %}
+<!-- Overall League Commissioner Admin Controls -->
+<div class="card" style="background:var(--surface-alt); border:1px solid var(--border); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <span class="badge badge-danger" style="margin-bottom:0.3rem;">Overall Commissioner Controls</span>
+            <h3 style="margin:0.2rem 0; font-size:1.1rem;">Manage Church Leadership &amp; Dues</h3>
+            <p style="margin:0; font-size:0.88rem; color:var(--text-muted);">
+                Designate the Church Commissioner liaison or update annual league dues status.
+            </p>
+        </div>
+        <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+            <!-- Assign Commissioner Form -->
+            <form method="post" action="{% url 'assign_church_commissioner' church.id %}" style="display:flex; gap:0.5rem; margin:0; align-items:center;">
+                {% csrf_token %}
+                <select name="commissioner_id" style="padding:0.4rem 0.6rem; font-size:0.85rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);">
+                    <option value="">-- Choose Commissioner --</option>
+                    {% for cand in eligible_commissioners %}
+                        <option value="{{ cand.id }}" {% if church.commissioner_id == cand.id %}selected{% endif %}>
+                            {{ cand.display_name }} ({{ cand.get_role_display }})
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-secondary">Save Leader</button>
+            </form>
+
+            <!-- Toggle Dues Form -->
+            <form method="post" action="{% url 'toggle_church_dues' church.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm {% if church.dues_paid %}btn-secondary{% else %}btn-accent{% endif %}">
+                    {% if church.dues_paid %}Mark Dues Unpaid{% else %}✓ Mark Dues Paid{% endif %}
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="grid grid-2">
+    <!-- Congregation Info Card -->
     <div class="card">
         <h2>Congregation &amp; Ministry Info</h2>
         <p>{{ church.description|default:"Partner congregation in the Church Sports League fellowship." }}</p>
-        <ul style="list-style:none; padding:0;">
-            {% if church.address %}<li><strong>Address:</strong> {{ church.address }}, {{ church.city }} {{ church.state }}</li>{% endif %}
-            {% if church.pastor_or_contact %}<li><strong>Sports Ministry Contact:</strong> {{ church.pastor_or_contact }}</li>{% endif %}
-            {% if church.contact_email %}<li><strong>Email:</strong> {{ church.contact_email }}</li>{% endif %}
+        <ul style="list-style:none; padding:0; line-height:1.8; font-size:0.95rem;">
+            {% if church.address %}<li><strong>Facility Address:</strong> {{ church.address }}, {{ church.city }} {{ church.state }}</li>{% endif %}
+            {% if church.pastor_or_contact %}<li><strong>Senior Pastor / Contact:</strong> {{ church.pastor_or_contact }}</li>{% endif %}
+            {% if church.commissioner %}<li><strong>Sports Commissioner:</strong> {{ church.commissioner.display_name }} ({{ church.commissioner.email }})</li>{% endif %}
+            {% if church.contact_email %}<li><strong>Ministry Email:</strong> {{ church.contact_email }}</li>{% endif %}
             {% if church.contact_phone %}<li><strong>Phone:</strong> {{ church.contact_phone }}</li>{% endif %}
             {% if church.website %}<li><strong>Website:</strong> <a href="{{ church.website }}" target="_blank" rel="noopener">{{ church.website }}</a></li>{% endif %}
         </ul>
     </div>
 
+    <!-- Affiliated Teams Card -->
     <div class="card">
-        <h2>Affiliated Teams ({{ teams.count }})</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <h2 style="margin:0;">Church Teams ({{ teams.count }})</h2>
+            {% if is_church_commish and open_seasons %}
+                <span class="badge badge-success">Registration Open</span>
+            {% endif %}
+        </div>
         {% if teams %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Team</th>
+                            <th>Season</th>
+                            <th>Team Captain</th>
+                            <th>Roster</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in teams %}
+                        <tr>
+                            <td><a href="{% url 'team_detail' t.id %}"><strong>{{ t.name }}</strong></a></td>
+                            <td><a href="{% url 'season_detail' t.season.id %}">{{ t.season.name }}</a></td>
+                            <td>{{ t.captain.display_name|default:"Unassigned" }}</td>
+                            <td>{{ t.players.count }} / {{ t.season.max_roster_size }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="color:var(--text-muted); font-size:0.92rem;">
+                No teams registered for this church yet.
+                {% if is_church_commish and open_seasons %}
+                    Use the command center above to enter a team into an active season!
+                {% endif %}
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Congregation Athletes / Members -->
+<div class="card" style="margin-top:1.5rem;">
+    <h2>Congregation Athletes &amp; Members ({{ members.count }})</h2>
+    {% if members %}
+        <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>Team</th>
-                        <th>Season</th>
-                        <th>Captain</th>
+                        <th>Athlete</th>
+                        <th>Role</th>
+                        <th>Jersey</th>
+                        <th>Waiver</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for t in teams %}
+                    {% for m in members %}
                     <tr>
-                        <td><a href="{% url 'team_detail' t.id %}"><strong>{{ t.name }}</strong></a></td>
-                        <td><a href="{% url 'season_detail' t.season.id %}">{{ t.season.name }}</a></td>
-                        <td>{{ t.captain.display_name }}</td>
+                        <td>
+                            <a href="{% url 'player_detail' m.id %}"><strong>{{ m.display_name }}</strong></a>
+                            {% if m == church.commissioner %}<span class="badge badge-primary">Commissioner</span>{% endif %}
+                        </td>
+                        <td>{{ m.get_role_display }}</td>
+                        <td>{% if m.jersey_number %}#{{ m.jersey_number }}{% else %}-{% endif %}</td>
+                        <td>
+                            {% if m.waiver_signed %}
+                                <span class="badge badge-success">&#10003; Signed</span>
+                            {% else %}
+                                <span class="badge badge-warning">Pending</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-        {% else %}
-            <p>No teams registered for this church yet.</p>
-        {% endif %}
-    </div>
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted);">No registered members affiliated with this church yet.</p>
+    {% endif %}
 </div>
 {% endblock %}

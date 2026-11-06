@@ -13,6 +13,18 @@ class Church(models.Model):
     contact_phone = models.CharField(max_length=30, blank=True)
     website = models.URLField(blank=True)
     description = models.TextField(blank=True)
+    commissioner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='managed_churches',
+        help_text="Church Commissioner / Sports Director who registers teams and designates captains"
+    )
+    dues_paid = models.BooleanField(
+        default=False,
+        help_text="Has the church paid annual/season league affiliation dues?"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -58,12 +70,13 @@ class Announcement(models.Model):
         blank=True,
         related_name='authored_announcements'
     )
-    is_pinned = models.BooleanField(default=False)
-    is_urgent = models.BooleanField(default=False, help_text="Highlight as an urgent banner (e.g., rainout or cancellation)")
+    is_urgent = models.BooleanField(default=False, help_text="Pin to dashboard as top priority notice")
+    send_discord = models.BooleanField(default=False, help_text="Broadcast to league Discord channel")
+    send_sms = models.BooleanField(default=False, help_text="Send urgent SMS via Twilio to players")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-is_pinned', '-is_urgent', '-created_at']
+        ordering = ['-is_urgent', '-created_at']
 
     def __str__(self):
-        return f"[{self.get_category_display()}] {self.title}"
+        return f"{self.title} ({self.get_category_display()})"

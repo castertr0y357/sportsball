@@ -13,26 +13,26 @@ TEST_ROLES_CATALOG = [
     {
         'username': 'commissioner',
         'email': 'commissioner@sportsball.local',
-        'name': 'Paul Andrews (Commissioner)',
-        'role': 'League Admin',
+        'name': 'Paul Andrews (Overall Commissioner)',
+        'role': 'Overall Commissioner',
         'badge': 'badge-danger',
-        'desc': 'Full administrative control, schedule generator, playoff brackets, announcements.',
+        'desc': 'Platform-wide administrative control, church invitations, league creation, bylaws.',
     },
     {
         'username': 'coach_grace',
         'email': 'coach.grace@sportsball.local',
-        'name': 'Caleb Brooks (Grace Coach)',
-        'role': 'Coach / Captain',
+        'name': 'Caleb Brooks (Grace Commissioner & Coach)',
+        'role': 'Church Commissioner / Coach',
         'badge': 'badge-primary',
-        'desc': 'Home dugout operator, lineup check-in, walk-up music DJ.',
+        'desc': 'Grace Fellowship sports director, registers Grace teams, designates captains.',
     },
     {
         'username': 'coach_calvary',
         'email': 'coach.calvary@sportsball.local',
-        'name': 'David Miller (Calvary Coach)',
-        'role': 'Coach / Captain',
+        'name': 'David Miller (Calvary Commissioner & Coach)',
+        'role': 'Church Commissioner / Coach',
         'badge': 'badge-primary',
-        'desc': 'Away dugout operator, opposing team captain.',
+        'desc': 'Calvary Baptist sports director, registers teams, designates captains.',
     },
     {
         'username': 'umpire_bob',
@@ -166,11 +166,16 @@ def create_in_app_test_user(request):
             waiver_signed=sign_waiver,
             waiver_signature=f"{first_name} {last_name}".strip() if sign_waiver else "",
             walkup_song_title=walkup_title,
-            is_staff=(role == 'admin'),
+            is_staff=(role in ('admin', 'committee')),
             is_superuser=(role == 'admin'),
         )
         user.set_password(password or 'sportsball123')
         user.save()
+
+        # If church commissioner, assign them as commissioner of that church
+        if role == 'church_admin' and church:
+            church.commissioner = user
+            church.save(update_fields=['commissioner'])
 
         # Auto-login as the freshly created user if requested
         if request.POST.get('auto_login'):

@@ -57,6 +57,7 @@ class Command(BaseCommand):
                 'contact_email': "sports@gracefellowship.org",
                 'contact_phone': "555-210-4401",
                 'description': "Host gym & ballfields for Tuesday and Thursday night softball and basketball fellowships.",
+                'dues_paid': True,
             }
         )
         calvary, _ = Church.objects.get_or_create(
@@ -70,6 +71,7 @@ class Command(BaseCommand):
                 'contact_email': "athletics@calvarybc.org",
                 'contact_phone': "555-210-8820",
                 'description': "Home of the Calvary Lions softball and basketball ministries.",
+                'dues_paid': True,
             }
         )
         redeemer, _ = Church.objects.get_or_create(
@@ -83,6 +85,7 @@ class Command(BaseCommand):
                 'contact_email': "lvance@redeemerpres.org",
                 'contact_phone': "555-210-3390",
                 'description': "Active young adult and family co-ed recreation teams.",
+                'dues_paid': True,
             }
         )
         hope, _ = Church.objects.get_or_create(
@@ -96,6 +99,7 @@ class Command(BaseCommand):
                 'contact_email': "sjenkins@hopecommunity.org",
                 'contact_phone': "555-210-7712",
                 'description': "Community outreach sports ministry welcoming players across the county.",
+                'dues_paid': False,
             }
         )
 
@@ -119,22 +123,22 @@ class Command(BaseCommand):
         admin_user.set_password("sportsball123")
         admin_user.save()
 
-        # Seed Coaches with intuitive email logins
+        # Seed Coaches & Church Commissioners with intuitive email logins
         coaches_data = [
-            ("coach_grace", "coach.grace@sportsball.local", "Caleb", "Brooks", grace, 34, "Victory Walk-Up Fanfare"),
-            ("coach_calvary", "coach.calvary@sportsball.local", "David", "Miller", calvary, 23, "Eye of the Tiger (Organ Intro)"),
-            ("coach_redeemer", "coach.redeemer@sportsball.local", "Luke", "Vance", redeemer, 11, "Chariots of Fire Theme"),
-            ("coach_hope", "coach.hope@sportsball.local", "Sarah", "Jenkins", hope, 7, "Centerfield Clap Riff"),
+            ("coach_grace", "coach.grace@sportsball.local", "Caleb", "Brooks", grace, 34, "Victory Walk-Up Fanfare", "church_admin"),
+            ("coach_calvary", "coach.calvary@sportsball.local", "David", "Miller", calvary, 23, "Eye of the Tiger (Organ Intro)", "church_admin"),
+            ("coach_redeemer", "coach.redeemer@sportsball.local", "Luke", "Vance", redeemer, 11, "Chariots of Fire Theme", "coach"),
+            ("coach_hope", "coach.hope@sportsball.local", "Sarah", "Jenkins", hope, 7, "Centerfield Clap Riff", "coach"),
         ]
         coaches = {}
-        for uname, email, fname, lname, ch, jnum, song_title in coaches_data:
+        for uname, email, fname, lname, ch, jnum, song_title, role in coaches_data:
             u = CustomUser.objects.filter(username=uname).first() or CustomUser.objects.filter(email__iexact=email).first()
             if not u:
                 u = CustomUser(username=uname, email=email)
             u.first_name = fname
             u.last_name = lname
             u.email = email
-            u.role = 'coach'
+            u.role = role
             u.church = ch
             u.jersey_number = jnum
             u.waiver_signed = True
@@ -148,6 +152,15 @@ class Command(BaseCommand):
                 u.walkup_song_file.save(f"{uname}_walkup.wav", ContentFile(wav_bytes), save=False)
             u.save()
             coaches[uname] = u
+
+        # Link Church Commissioners to their churches
+        grace.commissioner = coaches['coach_grace']
+        grace.dues_paid = True
+        grace.save()
+
+        calvary.commissioner = coaches['coach_calvary']
+        calvary.dues_paid = True
+        calvary.save()
 
         # Seed Players, Referees & Test Personas with email logins
         players_data = [

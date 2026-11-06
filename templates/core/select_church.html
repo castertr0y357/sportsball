@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}My Church | SportsBall{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:600px; margin:2.5rem auto; padding:2rem 1.75rem;">
+    <div style="text-align:center; margin-bottom:1.5rem;">
+        <div style="font-size:2.8rem; margin-bottom:0.4rem;">⛪</div>
+        <h1 style="margin:0 0 0.5rem; font-size:1.75rem;">Connect to Your Church</h1>
+        <p style="margin:0; color:var(--text-muted); font-size:0.95rem;">
+            Select your home church or participating congregation to view your church hub, rosters, and schedules.
+        </p>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div style="margin-bottom:1.5rem;">
+            <label for="id_church" style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.95rem;">
+                Select Your Home Church
+            </label>
+            <select name="church_id" id="id_church" style="width:100%; padding:0.65rem 0.85rem; font-size:0.95rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);">
+                <option value="">-- Choose a participating church --</option>
+                {% for ch in churches %}
+                    <option value="{{ ch.id }}">{{ ch.name }} ({{ ch.city|default:"Greenville" }}, {{ ch.state|default:"SC" }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-accent" style="width:100%; font-size:1.05rem; padding:0.75rem; font-weight:700;">
+            Save My Church
+        </button>
+    </form>
+
+    <div style="margin-top:1.5rem; padding-top:1.25rem; border-top:1px dashed var(--border); text-align:center;">
+        <p style="margin:0 0 0.5rem; font-size:0.88rem; color:var(--text-muted);">
+            Playing as an outreach guest or don't see your congregation?
+        </p>
+        <form method="post" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="church_id" value="">
+            <button type="submit" class="btn btn-sm btn-secondary">
+                Continue as Community / Visiting Guest
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
