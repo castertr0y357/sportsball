@@ -371,3 +371,14 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(game.team2_hits, 1)
         self.assertEqual(game.outs, 1)
 
+    def test_practice_sandbox_requires_login(self):
+        # 1. Unregistered guest redirected to login
+        resp_guest = self.client.get(reverse('practice_sandbox'))
+        self.assertEqual(resp_guest.status_code, 302)
+        self.assertIn(reverse('login'), resp_guest.url)
+
+        # 2. Logged in volunteer has access
+        self.client.login(username="coach_user", password="password123")
+        resp_member = self.client.get(reverse('practice_sandbox'))
+        self.assertEqual(resp_member.status_code, 200)
+

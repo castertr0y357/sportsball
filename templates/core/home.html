@@ -3,6 +3,19 @@
 
 {% block content %}
 
+<!-- Urgent Alerts (Weather/Rainouts) - Visible to everyone, registered and guests -->
+{% if urgent_alerts %}
+    {% for alert in urgent_alerts %}
+        <div class="alert alert-urgent" style="display:flex; align-items:flex-start; gap:0.75rem; margin-bottom:1.5rem;">
+            <span style="font-size:1.35rem; line-height:1;">🚨</span>
+            <div>
+                <strong>URGENT ALERT: {{ alert.title }}</strong><br>
+                <span>{{ alert.content }}</span>
+            </div>
+        </div>
+    {% endfor %}
+{% endif %}
+
 {% if user.is_authenticated %}
 <!-- =========================================================================
      AUTHENTICATED MEMBER DASHBOARD
@@ -107,19 +120,6 @@
         </div>
     </div>
 </div>
-{% endif %}
-
-<!-- Urgent Alerts -->
-{% if urgent_alerts %}
-    {% for alert in urgent_alerts %}
-        <div class="alert alert-urgent" style="display:flex; align-items:flex-start; gap:0.75rem;">
-            <span style="font-size:1.35rem; line-height:1;">🚨</span>
-            <div>
-                <strong>URGENT ALERT: {{ alert.title }}</strong><br>
-                <span>{{ alert.content }}</span>
-            </div>
-        </div>
-    {% endfor %}
 {% endif %}
 
 <!-- Devotional -->
