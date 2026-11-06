@@ -1,6 +1,9 @@
+from datetime import date
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.utils import timezone
+from django.db.models import Q
 from .models import Church, Announcement
 from .forms import ChurchForm, AnnouncementForm
 from leagues.models import League, Season, Game
@@ -8,12 +11,46 @@ from core.services.notifications import send_discord_notification, send_twilio_s
 
 
 def home(request):
+    today = timezone.localdate()
+    now = timezone.now()
+
     urgent_alerts = Announcement.objects.filter(is_urgent=True)[:3]
-    recent_announcements = Announcement.objects.select_related('league', 'season', 'author')[:5]
+    recent_announcements = Announcement.objects.select_related('league', 'season', 'author')[:4]
     devotional = Announcement.objects.filter(category='devotional').first()
     active_seasons = Season.objects.filter(current=True).select_related('league')
-    upcoming_games = Game.objects.filter(status='scheduled').select_related('team1', 'team2', 'season__league').order_by('date')[:6]
-    recent_results = Game.objects.filter(status='completed').select_related('team1', 'team2', 'season__league').order_by('-date')[:6]
+
+    # 1. Games currently in progress (Live Now)
+    live_games = Game.objects.filter(
+        status='in_progress'
+    ).select_related('team1', 'team2', 'season__league').order_by('date')
+
+    # 2. Games scheduled for today
+    today_games = Game.objects.filter(
+        status='scheduled',
+        date__date=today
+    ).select_related('team1', 'team2', 'season__league').order_by('date')
+
+    # 3. Personalized next game for authenticated players / coaches
+    my_next_game = None
+    if request.user.is_authenticated:
+        my_next_game = Game.objects.filter(
+            Q(team1__players=request.user) | Q(team2__players=request.user) |
+            Q(team1__captain=request.user) | Q(team2__captain=request.user),
+            status__in=['scheduled', 'in_progress'],
+            date__gte=now - timezone.timedelta(hours=4)
+        ).select_related('team1', 'team2', 'season__league').order_by('date').first()
+
+    # 4. Next upcoming games (next 5)
+    upcoming_games = Game.objects.filter(
+        status='scheduled',
+        date__gte=now - timezone.timedelta(hours=2)
+    ).select_related('team1', 'team2', 'season__league').order_by('date')[:5]
+
+    # 5. Recent completed game results
+    recent_results = Game.objects.filter(
+        status='completed'
+    ).select_related('team1', 'team2', 'season__league').order_by('-date')[:5]
+
     churches_count = Church.objects.count()
     leagues_count = League.objects.count()
 
@@ -22,10 +59,14 @@ def home(request):
         'recent_announcements': recent_announcements,
         'devotional': devotional,
         'active_seasons': active_seasons,
+        'live_games': live_games,
+        'today_games': today_games,
+        'my_next_game': my_next_game,
         'upcoming_games': upcoming_games,
         'recent_results': recent_results,
         'churches_count': churches_count,
         'leagues_count': leagues_count,
+        'today': today,
     })
 
 
@@ -62,22 +103,16 @@ def create_church(request):
 
 
 def announcement_list(request):
-    category = request.GET.get('category', '')
     announcements = Announcement.objects.select_related('league', 'season', 'author').all()
-    if category:
-        announcements = announcements.filter(category=category)
-    return render(request, 'core/announcement_list.html', {
-        'announcements': announcements,
-        'selected_category': category,
-        'categories': Announcement.CATEGORY_CHOICES,
-    })
+    return render(request, 'core/announcement_list.html', {'announcements': announcements})
 
 
 @login_required
 def create_announcement(request):
     if not request.user.can_manage_teams:
-        messages.error(request, "You don't have permission to post announcements.")
+        messages.error(request, "Only league admins and coaches can post league announcements.")
         return redirect('announcement_list')
+
     if request.method == 'POST':
         form = AnnouncementForm(request.POST)
         if form.is_valid():
@@ -85,23 +120,17 @@ def create_announcement(request):
             announcement.author = request.user
             announcement.save()
 
-            # Automatic Discord Webhook & Optional SMS Notification
-            webhook = ''
-            if announcement.season and announcement.season.discord_webhook_url:
-                webhook = announcement.season.discord_webhook_url
-            elif announcement.league and announcement.league.discord_webhook_url:
-                webhook = announcement.league.discord_webhook_url
+            if announcement.is_urgent:
+                webhook_url = getattr(announcement.season, 'discord_webhook_url', '') if announcement.season else ''
+                if webhook_url:
+                    send_discord_notification(
+                        webhook_url,
+                        title=f"🚨 URGENT ALERT: {announcement.title}",
+                        description=announcement.content,
+                        color=0xd97706
+                    )
 
-            if webhook:
-                color = 0xdc2626 if announcement.is_urgent else 0x1e3a8a
-                send_discord_notification(
-                    webhook_url=webhook,
-                    title=f"[{announcement.get_category_display()}] {announcement.title}",
-                    description=announcement.content,
-                    color=color
-                )
-
-            messages.success(request, f"Announcement '{announcement.title}' published.")
+            messages.success(request, f"Announcement '{announcement.title}' posted successfully.")
             return redirect('announcement_list')
     else:
         form = AnnouncementForm()

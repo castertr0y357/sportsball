@@ -17,15 +17,32 @@
         {% if season.registration_open %}
             <a href="{% url 'register_for_season' season.id %}" class="btn btn-accent">Player Registration</a>
         {% endif %}
-        {% if user.can_manage_teams %}
-            <a href="{% url 'create_team' season.id %}" class="btn">+ Add Team</a>
-            <a href="{% url 'create_game' season.id %}" class="btn">+ Schedule Game</a>
-        {% endif %}
-        {% if user.is_league_admin %}
-            <a href="{% url 'generate_schedule' season.id %}" class="btn">Auto-Generate Schedule</a>
-        {% endif %}
     </div>
 </div>
+
+<!-- Dedicated Commissioner & Coach Season Administration Panel -->
+{% if user.can_manage_teams or user.is_league_admin %}
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <div>
+            <span class="badge badge-primary">⚙️ Season Administration</span>
+            <div style="font-size:0.86rem; color:var(--text-muted); margin-top:0.2rem;">
+                Commissioner &amp; Coach tools for {{ season.name }}
+            </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            {% if user.can_manage_teams %}
+                <a href="{% url 'create_team' season.id %}" class="btn btn-sm btn-secondary">+ Add Team</a>
+                <a href="{% url 'create_game' season.id %}" class="btn btn-sm btn-secondary">+ Schedule Game</a>
+            {% endif %}
+            {% if user.is_league_admin %}
+                <a href="{% url 'generate_schedule' season.id %}" class="btn btn-sm btn-accent">⚡ Auto-Generate Schedule</a>
+            {% endif %}
+            <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">📢 Post Announcement</a>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if season.venmo_handle or season.cashapp_handle or season.paypal_link %}
 <div class="card" style="margin-bottom:1.5rem; background:#f0fdf4; border:1px solid #bbf7d0;">
@@ -190,7 +207,7 @@
                                     <select name="team_id" style="width:auto; padding:0.25rem;">
                                         <option value="">Assign team...</option>
                                         {% for st in standings %}
-                                            <option value="{{ st.team.id }}" {% if reg.preferred_team_id == st.team.id %}selected{% endif %}>{{ st.team.name }}</option>
+                                             <option value="{{ st.team.id }}" {% if reg.preferred_team_id == st.team.id %}selected{% endif %}>{{ st.team.name }}</option>
                                         {% endfor %}
                                     </select>
                                     <button type="submit" name="action" value="approve" class="btn btn-sm">Roster</button>

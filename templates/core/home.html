@@ -4,78 +4,146 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>Welcome to SportsBall</h1>
-        <p style="margin:0.25rem 0 0; color:var(--text-muted);">
+        <h1 style="font-size:1.65rem; margin-bottom:0.25rem;">
+            {% if user.is_authenticated %}
+                Welcome back, {{ user.display_name }}!
+            {% else %}
+                Welcome to SportsBall
+            {% endif %}
+        </h1>
+        <p style="margin:0; color:var(--text-muted); font-size:0.92rem;">
             Rec League Hub &bull; {{ churches_count }} Partner Churches &bull; {{ leagues_count }} Active Sports Ministries
         </p>
     </div>
-    <div style="display:flex; gap:0.5rem;">
-        <a href="{% url 'league_list' %}" class="btn">Browse Leagues</a>
-        <a href="{% url 'leaderboard' %}" class="btn btn-secondary">View Leaderboards</a>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'league_list' %}" class="btn btn-secondary">Browse Leagues</a>
+        <a href="{% url 'leaderboard' %}" class="btn btn-secondary">Stat Leaderboards</a>
     </div>
 </div>
 
-{% if user.is_authenticated and user.can_manage_teams %}
-<!-- Volunteer & Commissioner Quick Hub -->
-<div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%); color:#fff; border:none;">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-        <div>
-            <span class="badge badge-warning">⚡ Volunteer Quick Hub</span>
-            <h2 style="margin:0.35rem 0 0.15rem; color:#fff;">Welcome back, {{ user.display_name }}!</h2>
-            <p style="margin:0; font-size:0.9rem; color:#cbd5e1;">1-tap shortcuts for game day &amp; league administration</p>
+<!-- =========================================================================
+     Contextual "Happening Right Now" / Game Day Banner (Appears only when active)
+     ========================================================================= -->
+{% if live_games %}
+    {% for g in live_games %}
+    <div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); color:#fff; border:1px solid #3b82f6;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+                <span class="badge" style="background:#ef4444; color:#fff; font-weight:700; letter-spacing:0.04em;">
+                    <span style="display:inline-block; width:8px; height:8px; background:#fff; border-radius:50%; margin-right:4px;"></span>
+                    LIVE GAME IN PROGRESS
+                </span>
+                <span class="badge" style="background:rgba(255,255,255,0.15); color:#fff; margin-left:0.35rem;">
+                    {{ g.season.league.get_sport_display }}
+                </span>
+                <h2 style="margin:0.4rem 0 0.15rem; color:#fff; font-size:1.35rem;">
+                    {{ g.team1.name }} ({{ g.team1_score }}) vs ({{ g.team2_score }}) {{ g.team2.name }}
+                </h2>
+                <p style="margin:0; font-size:0.88rem; color:#cbd5e1;">
+                    {{ g.location }} &bull; {{ g.season.name }}
+                </p>
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                <a href="{% url 'gamecast' g.id %}" class="btn btn-accent" style="font-weight:700;">
+                    📡 Watch Live GameCast
+                </a>
+                {% if user.is_authenticated and user.can_record_scores %}
+                <a href="{% url 'dugout_console' g.id %}" class="btn btn-secondary" style="background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">
+                    ⚾ Open Dugout Scoreboard
+                </a>
+                {% endif %}
+            </div>
         </div>
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-            {% if active_seasons %}
-                {% with s=active_seasons.first %}
-                    {% if upcoming_games.first %}
-                    <a href="{% url 'dugout_console' upcoming_games.first.id %}" class="btn btn-sm btn-accent" style="font-weight:700;">
-                        ⚾ Open Dugout Scoreboard
+    </div>
+    {% endfor %}
+{% elif today_games %}
+    <div class="card" style="margin-bottom:1.5rem; background:var(--surface); border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+                <span class="badge badge-warning" style="font-weight:700;">⚾ GAME DAY TODAY</span>
+                <h3 style="margin:0.35rem 0 0.15rem;">{{ today_games.count }} game{{ today_games.count|pluralize }} scheduled for today</h3>
+                <p style="margin:0; font-size:0.88rem; color:var(--text-muted);">
+                    {% for tg in today_games %}
+                        <strong>{{ tg.date|date:"g:i A" }}</strong>: {{ tg.team1.name }} vs {{ tg.team2.name }} ({{ tg.location }}){% if not forloop.last %} &bull; {% endif %}
+                    {% endfor %}
+                </p>
+            </div>
+            <div>
+                {% if user.is_authenticated and user.can_record_scores %}
+                    <a href="{% url 'dugout_console' today_games.first.id %}" class="btn btn-accent">
+                        Score Today's Game &rarr;
                     </a>
-                    {% else %}
-                    <a href="{% url 'practice_sandbox' %}" class="btn btn-sm btn-accent" style="font-weight:700;">
-                        ⚾ Open Practice Scoreboard
+                {% else %}
+                    <a href="{% url 'game_detail' today_games.first.id %}" class="btn btn-secondary">
+                        View Game Details &rarr;
                     </a>
-                    {% endif %}
-                    <a href="{% url 'season_detail' s.id %}" class="btn btn-sm btn-secondary">
-                        Roster &amp; Attendance Check-In
-                    </a>
-                    {% if user.is_league_admin %}
-                        <a href="{% url 'generate_schedule' s.id %}" class="btn btn-sm btn-secondary">
-                            Auto-Generate Schedule
-                        </a>
-                    {% endif %}
-                {% endwith %}
-            {% endif %}
-            <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">
-                📢 Post Urgent Rainout Alert
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Personalized Next Game Highlight for Players & Coaches -->
+{% if my_next_game and not live_games and not today_games %}
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:0.85rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="font-size:1.4rem;">🗓️</span>
+            <div>
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.04em;">
+                    Your Next Game
+                </div>
+                <div style="font-weight:700; font-size:1rem;">
+                    {{ my_next_game.team1.name }} vs {{ my_next_game.team2.name }}
+                </div>
+                <div style="font-size:0.84rem; color:var(--text-muted);">
+                    {{ my_next_game.date|date:"l, M d @ g:i A" }} &bull; {{ my_next_game.location }}
+                </div>
+            </div>
+        </div>
+        <div>
+            <a href="{% url 'game_detail' my_next_game.id %}" class="btn btn-sm btn-secondary">
+                Game Details &rarr;
             </a>
         </div>
     </div>
 </div>
 {% endif %}
 
+<!-- Urgent Alerts (e.g. Rainout) -->
 {% if urgent_alerts %}
     {% for alert in urgent_alerts %}
-        <div class="alert alert-urgent">
-            <strong>URGENT ({{ alert.get_category_display }}): {{ alert.title }}</strong><br>
-            {{ alert.content }}
+        <div class="alert alert-urgent" style="display:flex; align-items:flex-start; gap:0.75rem;">
+            <span style="font-size:1.35rem; line-height:1;">🚨</span>
+            <div>
+                <strong>URGENT ALERT: {{ alert.title }}</strong><br>
+                <span>{{ alert.content }}</span>
+            </div>
         </div>
     {% endfor %}
 {% endif %}
 
+<!-- Weekly Devotional -->
 {% if devotional %}
-    <div class="alert alert-devotional">
-        <strong>Weekly Devotional: {{ devotional.title }}</strong>
-        {% if devotional.scripture_reference %}
-            <span class="badge badge-warning">{{ devotional.scripture_reference }}</span>
-        {% endif %}
-        <p style="margin:0.35rem 0 0;">{{ devotional.content }}</p>
+    <div class="alert alert-devotional" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+            <strong>✝️ Weekly Devotional: {{ devotional.title }}</strong>
+            {% if devotional.scripture_reference %}
+                <span class="badge badge-warning">{{ devotional.scripture_reference }}</span>
+            {% endif %}
+        </div>
+        <p style="margin:0; font-size:0.92rem;">{{ devotional.content }}</p>
     </div>
 {% endif %}
 
-<div class="grid grid-2" style="margin-bottom: 1.5rem;">
+<!-- Main Grid Layout -->
+<div class="grid grid-2" style="margin-bottom:1.5rem;">
+    <!-- Active Seasons & Mini-Standings -->
     <div class="card">
-        <h2>Current Active Seasons</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <h2 style="font-size:1.15rem; margin:0;">Active Seasons</h2>
+            <a href="{% url 'league_list' %}" style="font-size:0.84rem;">All Leagues &rarr;</a>
+        </div>
         {% if active_seasons %}
             <div class="table-wrap">
                 <table>
@@ -83,8 +151,8 @@
                         <tr>
                             <th>League / Sport</th>
                             <th>Season</th>
-                            <th>Registration</th>
-                            <th>Action</th>
+                            <th>Status</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -97,13 +165,15 @@
                             <td>{{ s.name }}</td>
                             <td>
                                 {% if s.registration_open %}
-                                    <span class="badge badge-success">Open (${{ s.registration_fee }})</span>
+                                    <span class="badge badge-success">Registration Open</span>
                                 {% else %}
-                                    <span class="badge">Closed</span>
+                                    <span class="badge">In Season</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                <a href="{% url 'season_detail' s.id %}" class="btn btn-sm">Standings &amp; Schedule</a>
+                            <td style="text-align:right;">
+                                <a href="{% url 'season_detail' s.id %}" class="btn btn-sm btn-secondary">
+                                    Standings &amp; Schedule
+                                </a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -111,40 +181,52 @@
                 </table>
             </div>
         {% else %}
-            <p>No active seasons right now. <a href="{% url 'league_list' %}">Explore leagues</a>.</p>
+            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">
+                No active seasons currently open. <a href="{% url 'league_list' %}">Explore past leagues</a>.
+            </p>
         {% endif %}
     </div>
 
+    <!-- League Announcements -->
     <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2>League Announcements</h2>
-            <a href="{% url 'announcement_list' %}" class="btn btn-sm btn-secondary">All Updates</a>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <h2 style="font-size:1.15rem; margin:0;">Announcements</h2>
+            <div style="display:flex; gap:0.4rem; align-items:center;">
+                {% if user.can_manage_teams %}
+                    <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">+ Post</a>
+                {% endif %}
+                <a href="{% url 'announcement_list' %}" style="font-size:0.84rem;">All &rarr;</a>
+            </div>
         </div>
         {% if recent_announcements %}
-            <ul style="padding-left:1.1rem; margin:0.5rem 0 0;">
+            <ul style="padding-left:1.1rem; margin:0.25rem 0 0;">
                 {% for a in recent_announcements %}
                     <li style="margin-bottom:0.65rem;">
                         <span class="badge">{{ a.get_category_display }}</span>
                         <strong>{{ a.title }}</strong> &mdash;
-                        <span style="color:var(--text-muted);">{{ a.content|truncatewords:20 }}</span>
+                        <span style="color:var(--text-muted); font-size:0.88rem;">{{ a.content|truncatewords:16 }}</span>
                     </li>
                 {% endfor %}
             </ul>
         {% else %}
-            <p>No announcements posted yet.</p>
+            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">
+                No announcements posted yet.
+            </p>
         {% endif %}
     </div>
 </div>
 
+<!-- Upcoming Games & Recent Results Grid -->
 <div class="grid grid-2">
+    <!-- Upcoming Games -->
     <div class="card">
-        <h2>Upcoming Games</h2>
+        <h2 style="font-size:1.15rem; margin:0 0 0.75rem;">Upcoming Schedule</h2>
         {% if upcoming_games %}
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>Date &amp; Time</th>
+                            <th>Date / Time</th>
                             <th>Matchup</th>
                             <th>Location</th>
                             <th></th>
@@ -153,19 +235,26 @@
                     <tbody>
                         {% for g in upcoming_games %}
                         <tr>
-                            <td>{{ g.date|date:"M d, g:i A" }}</td>
+                            <td style="font-size:0.88rem;">
+                                <strong>{{ g.date|date:"M d" }}</strong><br>
+                                <span style="color:var(--text-muted);">{{ g.date|date:"g:i A" }}</span>
+                            </td>
                             <td>
-                                <strong>{{ g.team1.name }}</strong> vs <strong>{{ g.team2.name }}</strong>
+                                <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
+                                    {{ g.team1.name }} vs {{ g.team2.name }}
+                                </a>
                                 {% if g.game_type != 'regular' %}
-                                    <span class="badge badge-warning">{{ g.get_game_type_display }}</span>
+                                    <br><span class="badge badge-warning" style="font-size:0.72rem;">{{ g.get_game_type_display }}</span>
                                 {% endif %}
                             </td>
-                            <td>{{ g.location }}</td>
-                            <td>
-                                <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
-                                <a href="{% url 'gamecast' g.id %}" class="btn btn-sm">GameCast</a>
-                                {% if user.is_authenticated and user.can_record_scores %}
-                                    <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Dugout Console</a>
+                            <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.location }}</td>
+                            <td style="text-align:right;">
+                                {% if g.status == 'in_progress' %}
+                                    <a href="{% url 'gamecast' g.id %}" class="btn btn-sm btn-accent">🔴 GameCast</a>
+                                {% elif user.is_authenticated and user.can_record_scores and g.date.date == today %}
+                                    <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Score</a>
+                                {% else %}
+                                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
                                 {% endif %}
                             </td>
                         </tr>
@@ -174,19 +263,20 @@
                 </table>
             </div>
         {% else %}
-            <p>No upcoming scheduled games.</p>
+            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No upcoming scheduled games.</p>
         {% endif %}
     </div>
 
+    <!-- Recent Final Scores -->
     <div class="card">
-        <h2>Recent Final Scores</h2>
+        <h2 style="font-size:1.15rem; margin:0 0 0.75rem;">Recent Results</h2>
         {% if recent_results %}
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Final Result</th>
+                            <th>Final Score</th>
                             <th>Season</th>
                             <th></th>
                         </tr>
@@ -194,20 +284,29 @@
                     <tbody>
                         {% for g in recent_results %}
                         <tr>
-                            <td>{{ g.date|date:"M d" }}</td>
+                            <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.date|date:"M d" }}</td>
                             <td>
-                                <strong>{{ g.team1.name }} {{ g.team1_score }}</strong> &ndash;
-                                <strong>{{ g.team2_score }} {{ g.team2.name }}</strong>
+                                <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
+                                    {% if g.team1_score > g.team2_score %}
+                                        <strong>{{ g.team1.name }} {{ g.team1_score }}</strong> &ndash; {{ g.team2_score }} {{ g.team2.name }}
+                                    {% elif g.team2_score > g.team1_score %}
+                                        {{ g.team1.name }} {{ g.team1_score }} &ndash; <strong>{{ g.team2_score }} {{ g.team2.name }}</strong>
+                                    {% else %}
+                                        {{ g.team1.name }} {{ g.team1_score }} &ndash; {{ g.team2_score }} {{ g.team2.name }} (Tie)
+                                    {% endif %}
+                                </a>
                             </td>
-                            <td>{{ g.season.name }}</td>
-                            <td><a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a></td>
+                            <td style="font-size:0.84rem; color:var(--text-muted);">{{ g.season.name }}</td>
+                            <td style="text-align:right;">
+                                <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         {% else %}
-            <p>No completed games recorded yet.</p>
+            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No completed games recorded yet.</p>
         {% endif %}
     </div>
 </div>
