@@ -33,12 +33,33 @@ def home(request):
 
     # 3. Personalized next game for authenticated players / coaches
     my_next_game = None
+    my_next_game_rsvp = None
+    my_team = None
+    can_manage_next_lineup = False
+    next_game_rsvp_summary = None
+
     if request.user.is_authenticated:
         my_next_game = Game.objects.filter(
-            Q(team1__players=request.user) | Q(team2__players=request.user),
+            Q(team1__players=request.user) | Q(team2__players=request.user) |
+            Q(team1__captain=request.user) | Q(team2__captain=request.user),
             status='scheduled',
             date__gte=now
-        ).select_related('team1', 'team2', 'season__league').order_by('date').first()
+        ).select_related('team1__church', 'team2__church', 'season__league').order_by('date').first()
+
+        if my_next_game:
+            my_next_game_rsvp = my_next_game.get_player_rsvp(request.user)
+            if my_next_game.team1.players.filter(id=request.user.id).exists() or my_next_game.team1.captain_id == request.user.id:
+                my_team = my_next_game.team1
+            else:
+                my_team = my_next_game.team2
+
+            can_manage_next_lineup = (
+                request.user == my_team.captain or
+                request.user.can_manage_church(my_team.church) or
+                request.user.can_manage_league(my_next_game.season.league) or
+                request.user.is_overall_commissioner
+            )
+            next_game_rsvp_summary = my_next_game.get_team_rsvp_summary(my_team)
 
     # 4. Upcoming scheduled matchups (future days)
     upcoming_games = Game.objects.filter(
@@ -62,6 +83,10 @@ def home(request):
         'live_games': live_games,
         'today_games': today_games,
         'my_next_game': my_next_game,
+        'my_next_game_rsvp': my_next_game_rsvp,
+        'my_team': my_team,
+        'can_manage_next_lineup': can_manage_next_lineup,
+        'next_game_rsvp_summary': next_game_rsvp_summary,
         'upcoming_games': upcoming_games,
         'recent_results': recent_results,
         'churches_count': churches_count,
@@ -146,6 +171,8 @@ def church_detail(request, church_id):
         )
     )
 
+    church_invite_url = church.get_invite_url(request)
+
     return render(request, 'core/church_detail.html', {
         'church': church,
         'teams': teams,
@@ -155,6 +182,7 @@ def church_detail(request, church_id):
         'can_view_members': can_view_members,
         'open_seasons': open_seasons,
         'eligible_commissioners': eligible_commissioners,
+        'church_invite_url': church_invite_url,
     })
 
 
@@ -250,3 +278,25 @@ def create_announcement(request):
     else:
         form = AnnouncementForm(user=request.user)
     return render(request, 'core/create_announcement.html', {'form': form})
+
+def join_church_by_invite(request, invite_code):
+    """1-Click Onboarding Link for Partner Church Pastors and Sports Directors."""
+    church = get_object_or_404(Church, invite_code=invite_code)
+
+    if not request.user.is_authenticated:
+        from django.urls import reverse
+        return redirect(f"{reverse('register')}?church_invite={invite_code}")
+
+    # Designate user as Church Commissioner
+    church.commissioner = request.user
+    church.save(update_fields=['commissioner'])
+    if request.user.role in ('player', 'coach'):
+        request.user.role = 'church_admin'
+    request.user.church = church
+    request.user.save(update_fields=['role', 'church'])
+
+    messages.success(
+        request,
+        f"Welcome, {request.user.first_name}! You are now appointed as Church Commissioner for {church.name}."
+    )
+    return redirect('church_detail', church_id=church.id)

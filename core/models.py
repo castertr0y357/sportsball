@@ -25,7 +25,25 @@ class Church(models.Model):
         default=False,
         help_text="Has the church paid annual/season league affiliation dues?"
     )
+    invite_code = models.CharField(
+        max_length=32,
+        unique=True,
+        blank=True,
+        null=True,
+        help_text="Unique invite token for onboarding church pastor / sports commissioner"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.invite_code:
+            import uuid
+            self.invite_code = uuid.uuid4().hex[:10]
+        super().save(*args, **kwargs)
+
+    def get_invite_url(self, request=None):
+        from django.urls import reverse
+        rel = reverse('join_church_invite', args=[self.invite_code])
+        return request.build_absolute_uri(rel) if request else rel
 
     class Meta:
         verbose_name_plural = "Churches"

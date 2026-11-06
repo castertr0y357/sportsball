@@ -11,11 +11,14 @@ from leagues.models import Team, SeasonRegistration
 
 def register(request):
     invite_code = request.GET.get('invite') or request.POST.get('invite')
+    church_invite = request.GET.get('church_invite') or request.POST.get('church_invite')
     invited_team = None
     if invite_code:
         invited_team = Team.objects.filter(invite_code=invite_code).select_related('season', 'league', 'church').first()
 
     if request.user.is_authenticated:
+        if church_invite:
+            return redirect('join_church_invite', invite_code=church_invite)
         if invited_team:
             return redirect('join_team_invite', invite_code=invite_code)
         return redirect('home')
@@ -24,7 +27,15 @@ def register(request):
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
+            # Zero-Step Waiver: Automatically certify waiver if checked (defaults to True)
+            if form.cleaned_data.get('agree_waiver', True):
+                user.sign_waiver(user.display_name)
+
             login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
+
+            if church_invite:
+                return redirect('join_church_invite', invite_code=church_invite)
+
             if invited_team:
                 if invited_team.players.count() < invited_team.season.max_roster_size:
                     invited_team.players.add(user)
@@ -37,16 +48,16 @@ def register(request):
                             'preferred_team': invited_team,
                             'is_free_agent': False,
                             'status': 'approved',
-                            'waiver_agreed': False,
+                            'waiver_agreed': user.waiver_signed,
                         }
                     )
-                    messages.success(request, f"Welcome to SportsBall, {user.first_name}! You've joined {invited_team.name}.")
+                    messages.success(request, f"Welcome to SportsBall, {user.first_name}! You've joined {invited_team.name} and your waiver is signed.")
                     return redirect('team_detail', team_id=invited_team.id)
                 else:
                     messages.warning(request, f"Welcome {user.first_name}! {invited_team.name} has reached its maximum roster size, but your account is ready.")
                     return redirect('profile')
 
-            messages.success(request, f"Welcome to SportsBall, {user.first_name}!")
+            messages.success(request, f"Welcome to SportsBall, {user.first_name}! Your account is ready.")
             return redirect('profile')
     else:
         form = CustomUserCreationForm()
@@ -55,6 +66,7 @@ def register(request):
         'form': form,
         'invited_team': invited_team,
         'invite_code': invite_code,
+        'church_invite': church_invite,
     })
 
 

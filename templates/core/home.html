@@ -97,15 +97,15 @@
 
 <!-- Personalized Next Game Highlight -->
 {% if my_next_game and not live_games and not today_games %}
-<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:0.85rem 1.25rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
         <div style="display:flex; align-items:center; gap:0.75rem;">
-            <span style="font-size:1.4rem;">🗓️</span>
+            <span style="font-size:1.6rem;">🗓️</span>
             <div>
-                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.04em;">
-                    Your Next Game
+                <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.04em;">
+                    Your Next Game &bull; {{ my_team.name }}
                 </div>
-                <div style="font-weight:700; font-size:1rem;">
+                <div style="font-weight:700; font-size:1.05rem;">
                     {{ my_next_game.team1.name }} vs {{ my_next_game.team2.name }}
                 </div>
                 <div style="font-size:0.84rem; color:var(--text-muted);">
@@ -113,13 +113,62 @@
                 </div>
             </div>
         </div>
-        <div>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <!-- 1-Tap Attendance RSVP on Dashboard -->
+            <div style="display:flex; align-items:center; gap:0.35rem; background:var(--surface); padding:0.25rem 0.5rem; border-radius:var(--radius); border:1px solid var(--border);" id="homeRsvpGroup">
+                <span style="font-size:0.78rem; font-weight:600; color:var(--text-muted); margin-right:0.25rem;">Attendance:</span>
+                <button type="button" class="btn btn-sm {% if my_next_game_rsvp == 'yes' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitHomeRsvp({{ my_next_game.id }}, 'yes')" style="padding:0.25rem 0.55rem; font-size:0.8rem;">
+                    👍 In
+                </button>
+                <button type="button" class="btn btn-sm {% if my_next_game_rsvp == 'no' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitHomeRsvp({{ my_next_game.id }}, 'no')" style="padding:0.25rem 0.55rem; font-size:0.8rem;">
+                    👎 Out
+                </button>
+                <button type="button" class="btn btn-sm {% if my_next_game_rsvp == 'maybe' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitHomeRsvp({{ my_next_game.id }}, 'maybe')" style="padding:0.25rem 0.55rem; font-size:0.8rem;">
+                    ? Maybe
+                </button>
+            </div>
+
+            {% if can_manage_next_lineup and my_team %}
+                <a href="{% url 'game_lineup_builder' my_next_game.id my_team.id %}" class="btn btn-sm btn-secondary" style="font-weight:600;">
+                    📝 Set Lineup ({% if next_game_rsvp_summary %}{{ next_game_rsvp_summary.yes }} Confirmed{% endif %}) &rarr;
+                </a>
+            {% endif %}
+
             <a href="{% url 'game_detail' my_next_game.id %}" class="btn btn-sm btn-secondary">
-                Game Details &rarr;
+                Details &rarr;
             </a>
         </div>
     </div>
 </div>
+
+<script>
+function submitHomeRsvp(gameId, responseVal) {
+    fetch("/leagues/games/" + gameId + "/rsvp/", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ response: responseVal })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const grp = document.getElementById('homeRsvpGroup');
+            if (grp) {
+                const btns = grp.querySelectorAll('button');
+                btns.forEach(b => {
+                    b.classList.remove('btn-accent');
+                    b.classList.add('btn-secondary');
+                });
+                if (responseVal === 'yes') btns[0].classList.add('btn-accent');
+                if (responseVal === 'no') btns[1].classList.add('btn-accent');
+                if (responseVal === 'maybe') btns[2].classList.add('btn-accent');
+            }
+        }
+    });
+}
+</script>
 {% endif %}
 
 <!-- Devotional -->

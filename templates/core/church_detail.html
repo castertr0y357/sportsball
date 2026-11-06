@@ -1,5 +1,19 @@
 {% extends "base.html" %}
-{% block title %}{{ church.name }} | Church Hub{% endblock %}
+{% block title %}{{ church.name }} | Church Hub
+<script>
+function copyChurchInviteUrl() {
+    const input = document.getElementById('churchInviteUrlInput');
+    if (input) {
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => {
+            alert('✓ Church onboarding invite link copied to clipboard!');
+        }).catch(() => {
+            prompt('Copy Church Invite Link:', input.value);
+        });
+    }
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -61,6 +75,30 @@
 {% endif %}
 
 {% if is_overall_commish %}
+<!-- 1-Click Church Invite Onboarding Widget -->
+<div class="card" style="background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(245,158,11,0.08)); border:1px solid rgba(37,99,235,0.25); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+        <div style="max-width:620px;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">
+                <span style="font-size:1.25rem;">⚡</span>
+                <h3 style="margin:0; font-size:1.15rem;">1-Click Church Commissioner Onboarding Link</h3>
+                <span class="badge badge-primary">Commissioner Tool</span>
+            </div>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-muted);">
+                Share this link with the Pastor or Athletic Director for <strong>{{ church.name }}</strong>. When they sign up, their account will instantly be appointed Church Commissioner to register teams.
+            </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem; width:100%; max-width:480px;">
+            <input type="text" id="churchInviteUrlInput" value="{{ church_invite_url }}" readonly
+                style="flex:1; padding:0.55rem 0.75rem; font-size:0.85rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); font-family:monospace;"
+                onclick="this.select();">
+            <button type="button" class="btn btn-accent" onclick="copyChurchInviteUrl()" style="white-space:nowrap; padding:0.55rem 1rem;">
+                📋 Copy Link
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Overall League Commissioner Admin Controls -->
 <div class="card" style="background:var(--surface-alt); border:1px solid var(--border); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">

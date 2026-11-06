@@ -3,6 +3,18 @@
 
 {% block content %}
 <div class="card" style="max-width:540px; margin:2rem auto; padding:2rem 1.75rem;">
+    {% if church_invite %}
+        <div style="background:linear-gradient(135deg, rgba(37,99,235,0.12), rgba(16,185,129,0.12)); border:1px solid rgba(37,99,235,0.25); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem; text-align:center;">
+            <div style="font-size:1.8rem; margin-bottom:0.25rem;">⛪</div>
+            <span class="badge badge-primary" style="font-size:0.8rem; margin-bottom:0.4rem;">Church Leadership Invitation</span>
+            <h2 style="margin:0.25rem 0 0.4rem; font-size:1.35rem; color:var(--text-main);">
+                Appointing Church Sports Commissioner
+            </h2>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-muted);">
+                Sign up to lead your church's teams and register for upcoming seasons.
+            </p>
+        </div>
+    {% endif %}
     {% if invited_team %}
         <div style="background:linear-gradient(135deg, rgba(37,99,235,0.12), rgba(16,185,129,0.12)); border:1px solid rgba(37,99,235,0.25); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem; text-align:center;">
             <div style="font-size:1.8rem; margin-bottom:0.25rem;">⚾</div>
@@ -39,6 +51,9 @@
         {% csrf_token %}
         {% if invite_code %}
             <input type="hidden" name="invite" value="{{ invite_code }}">
+        {% endif %}
+        {% if church_invite %}
+            <input type="hidden" name="church_invite" value="{{ church_invite }}">
         {% endif %}
 
         {% if form.non_field_errors %}
@@ -88,6 +103,20 @@
                 <div style="color:var(--danger, #dc2626); font-size:0.82rem; margin-top:0.25rem;">{{ form.password2.errors.0 }}</div>
             {% endif %}
         </div>
+
+        {% if form.agree_waiver %}
+        <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 0.9rem; margin-bottom:1.25rem;">
+            <label style="display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer; font-size:0.86rem; margin:0;">
+                {{ form.agree_waiver }}
+                <span>
+                    <strong>Liability Waiver &amp; Sportsmanship Covenant</strong><br>
+                    <span style="color:var(--text-muted); font-size:0.8rem;">
+                        I agree to the Christian sportsmanship code and league liability release.
+                    </span>
+                </span>
+            </label>
+        </div>
+        {% endif %}
 
         <button type="submit" class="btn btn-accent" style="width:100%; font-size:1.05rem; padding:0.75rem; font-weight:700;">
             {% if invited_team %}

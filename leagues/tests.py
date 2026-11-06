@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from django.test import TestCase
 from django.urls import reverse
@@ -789,3 +790,134 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(resp.status_code, 302)
         ann = Announcement.objects.get(title='Coach Announcement')
         self.assertFalse(ann.is_urgent)  # Forced to False by permission enforcement
+
+    def test_upcoming_game_lineup_builder_multi_position_and_rotations(self):
+        # Add coach_user as player to team1
+        self.team1.players.add(self.coach_user)
+        # Create scheduled game
+        game = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() + timedelta(days=3),
+            location="Gym A",
+            status="scheduled",
+            game_type="regular",
+        )
+        game.ensure_lineups_initialized()
+
+        # 1. Rival player (player_user is on team2) tries to access team1 lineup builder -> blocked
+        self.team2.players.add(self.player_user)
+        self.client.login(username="player_user", password="password123")
+        resp_unauth = self.client.get(reverse('game_lineup_builder', args=[game.id, self.team1.id]))
+        self.assertEqual(resp_unauth.status_code, 302)
+
+        # 2. Coach of team1 accesses lineup builder -> 200 OK
+        self.client.login(username="coach_user", password="password123")
+        resp_get = self.client.get(reverse('game_lineup_builder', args=[game.id, self.team1.id]))
+        self.assertEqual(resp_get.status_code, 200)
+        self.assertContains(resp_get, "Batting Order &amp; Defensive Rotations")
+
+        # 3. Coach saves multi-position and inning rotations
+        entry = game.lineup_entries.filter(team=self.team1).first()
+        self.assertIsNotNone(entry)
+
+        resp_post = self.client.post(reverse('game_lineup_builder', args=[game.id, self.team1.id]), {
+            'action': 'save_lineup',
+            f'order_{entry.id}': 1,
+            f'position_{entry.id}': 'SS / P',
+            f'present_{entry.id}': '1',
+            f'rotation_{entry.id}_1': 'SS',
+            f'rotation_{entry.id}_2': 'SS',
+            f'rotation_{entry.id}_3': 'P',
+            f'rotation_{entry.id}_4': 'P',
+        })
+        self.assertEqual(resp_post.status_code, 302)
+        entry.refresh_from_db()
+        self.assertEqual(entry.field_position, 'SS / P')
+        self.assertEqual(entry.position_rotations.get('1'), 'SS')
+        self.assertEqual(entry.position_rotations.get('3'), 'P')
+        self.assertEqual(entry.get_position_for_inning(1), 'SS')
+        self.assertEqual(entry.get_position_for_inning(3), 'P')
+        self.assertEqual(entry.get_position_for_inning(7), 'SS / P')  # Fallback to field_position
+
+    def test_game_rsvp_and_autofill_lineup(self):
+        game = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() + timedelta(days=2),
+            location="Diamond #1",
+            status="scheduled",
+            game_type="regular",
+        )
+        # Add player_user and a second player to team1
+        self.team1.players.add(self.player_user)
+        player2 = CustomUser.objects.create_user(username="player2", password="password123", role="player")
+        self.team1.players.add(player2)
+        game.ensure_lineups_initialized()
+
+        # 1. player_user RSVPs 'yes' (I'm In)
+        self.client.login(username="player_user", password="password123")
+        resp_rsvp1 = self.client.post(
+            reverse('game_rsvp', args=[game.id]),
+            data=json.dumps({'response': 'yes', 'notes': 'Bringing the bats!'}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp_rsvp1.status_code, 200)
+        self.assertEqual(resp_rsvp1.json()['response'], 'yes')
+
+        # 2. player2 RSVPs 'no' (Can't Make It)
+        self.client.login(username="player2", password="password123")
+        resp_rsvp2 = self.client.post(
+            reverse('game_rsvp', args=[game.id]),
+            data=json.dumps({'response': 'no', 'notes': 'Out of town'}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp_rsvp2.status_code, 200)
+
+        # 3. Check summary
+        summary = game.get_team_rsvp_summary(self.team1)
+        self.assertEqual(summary['yes'], 1)
+        self.assertEqual(summary['no'], 1)
+
+        # 4. Coach triggers autofill_rsvps -> confirmed player is at top, absent player benched
+        self.client.login(username="coach_user", password="password123")
+        resp_autofill = self.client.post(reverse('game_lineup_builder', args=[game.id, self.team1.id]), {
+            'action': 'autofill_rsvps',
+        })
+        self.assertEqual(resp_autofill.status_code, 302)
+
+        entry_yes = game.lineup_entries.get(team=self.team1, player=self.player_user)
+        entry_no = game.lineup_entries.get(team=self.team1, player=player2)
+        self.assertTrue(entry_yes.is_present)
+        self.assertFalse(entry_no.is_present)
+        self.assertLess(entry_yes.batting_order, entry_no.batting_order)
+
+    def test_church_invite_onboarding_and_zero_step_waiver(self):
+        # 1. Test church invite link
+        self.assertTrue(bool(self.church.invite_code))
+        invite_url = reverse('join_church_invite', args=[self.church.invite_code])
+
+        # New user visits invite URL -> redirects to register with ?church_invite
+        resp_anon = self.client.get(invite_url)
+        self.assertEqual(resp_anon.status_code, 302)
+        self.assertIn(f'church_invite={self.church.invite_code}', resp_anon.url)
+
+        # Register user with church_invite and agree_waiver
+        resp_reg = self.client.post(reverse('register'), {
+            'first_name': 'Pastor',
+            'last_name': 'Mark',
+            'email': 'pastor.mark@gracefellowship.org',
+            'password1': 'sportsball123',
+            'password2': 'sportsball123',
+            'agree_waiver': 'on',
+            'church_invite': self.church.invite_code,
+        }, follow=True)
+        self.assertEqual(resp_reg.status_code, 200)
+
+        new_user = CustomUser.objects.get(email='pastor.mark@gracefellowship.org')
+        self.assertTrue(new_user.waiver_signed)
+        self.church.refresh_from_db()
+        self.assertEqual(self.church.commissioner, new_user)
+        self.assertEqual(new_user.role, 'church_admin')

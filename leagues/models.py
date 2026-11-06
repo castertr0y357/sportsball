@@ -459,6 +459,29 @@ class Game(models.Model):
         idx = (self.team1_batter_index if team == self.team1 else self.team2_batter_index) % len(active_entries)
         return active_entries[idx].player
 
+    def get_team_rsvp_summary(self, team):
+        """Returns headcount breakdown of RSVPs for players on this team."""
+        roster_ids = list(team.players.values_list('id', flat=True))
+        rsvps = {r.player_id: r.response for r in self.rsvps.filter(player_id__in=roster_ids)}
+        yes_count = sum(1 for resp in rsvps.values() if resp == 'yes')
+        no_count = sum(1 for resp in rsvps.values() if resp == 'no')
+        maybe_count = sum(1 for resp in rsvps.values() if resp == 'maybe')
+        total_roster = len(roster_ids)
+        pending_count = total_roster - len(rsvps)
+        return {
+            'yes': yes_count,
+            'no': no_count,
+            'maybe': maybe_count,
+            'pending': pending_count,
+            'total': total_roster,
+        }
+
+    def get_player_rsvp(self, player):
+        if not player or not player.is_authenticated:
+            return None
+        rsvp = self.rsvps.filter(player=player).first()
+        return rsvp.response if rsvp else None
+
     def log_play(self, message: str):
         log = list(self.play_by_play or [])
         half_label = "Top" if self.inning_half == 'top' else "Bot"
@@ -488,12 +511,41 @@ class GameLineupEntry(models.Model):
     player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='lineup_appearances')
     batting_order = models.PositiveIntegerField(default=1)
     is_present = models.BooleanField(default=True, help_text="Checked in / present at the ballpark today")
-    field_position = models.CharField(max_length=20, blank=True, help_text="e.g., P, C, 1B, 2B, SS, 3B, LF, CF, RF, EH")
+    field_position = models.CharField(max_length=120, blank=True, help_text="e.g., SS / P or primary position")
+    position_rotations = models.JSONField(default=dict, blank=True, help_text="Inning or period rotations (e.g. {'1': 'SS', '2': 'P'})")
 
     class Meta:
         ordering = ['team', 'batting_order', 'id']
         unique_together = [('game', 'team', 'player')]
 
+    def get_position_for_inning(self, inning: int) -> str:
+        """Returns the specific position for this inning, or fallback to field_position."""
+        if self.position_rotations:
+            pos = self.position_rotations.get(str(inning))
+            if pos:
+                return pos
+        return self.field_position or '-'
+
     def __str__(self):
         status = "Present" if self.is_present else "Absent (Skipped)"
-        return f"#{self.batting_order} {self.player.display_name} ({self.team.name}) - {status}"
+        return f"#{self.batting_order} {self.player.display_name} ({self.team.name}) [{self.field_position}] - {status}"
+
+
+class GameRSVP(models.Model):
+    RESPONSE_CHOICES = [
+        ('yes', 'In'),
+        ('no', 'Out'),
+        ('maybe', 'Maybe'),
+    ]
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='rsvps')
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='game_rsvps')
+    response = models.CharField(max_length=10, choices=RESPONSE_CHOICES, default='yes')
+    notes = models.CharField(max_length=150, blank=True, help_text="e.g. Running 10 mins late")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = [('game', 'player')]
+
+    def __str__(self):
+        return f"{self.player.display_name} -> {self.get_response_display()} ({self.game})"

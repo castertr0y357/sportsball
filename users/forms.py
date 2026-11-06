@@ -23,6 +23,13 @@ class CustomUserCreationForm(UserCreationForm):
         widget=forms.EmailInput(attrs={'placeholder': 'you@example.com', 'autocomplete': 'email'})
     )
 
+    agree_waiver = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="I certify the liability waiver and Christian sportsmanship covenant",
+        widget=forms.CheckboxInput(attrs={'checked': 'checked'})
+    )
+
     class Meta(UserCreationForm.Meta):
         model = CustomUser
         fields = ('first_name', 'last_name', 'email')

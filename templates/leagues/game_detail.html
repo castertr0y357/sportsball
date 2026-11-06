@@ -1,5 +1,43 @@
 {% extends "base.html" %}
-{% block title %}{{ game.team1.name }} vs {{ game.team2.name }} | Game Center{% endblock %}
+{% block title %}{{ game.team1.name }} vs {{ game.team2.name }} | Game Center
+<script>
+function submitGameRsvp(responseVal) {
+    const btnGroup = document.getElementById('rsvpButtonGroup');
+    const msg = document.getElementById('rsvpStatusMsg');
+    if (msg) msg.innerText = 'Updating...';
+
+    fetch("{% url 'game_rsvp' game.id %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ response: responseVal })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            if (msg) msg.innerText = '✓ ' + data.response_display;
+            if (btnGroup) {
+                const btns = btnGroup.querySelectorAll('button');
+                btns.forEach(b => {
+                    b.classList.remove('btn-accent');
+                    b.classList.add('btn-secondary');
+                });
+                if (responseVal === 'yes') btns[0].classList.add('btn-accent');
+                if (responseVal === 'no') btns[1].classList.add('btn-accent');
+                if (responseVal === 'maybe') btns[2].classList.add('btn-accent');
+            }
+        } else {
+            if (msg) msg.innerText = data.error || 'Failed';
+        }
+    })
+    .catch(() => {
+        if (msg) msg.innerText = 'Error saving';
+    });
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -11,16 +49,54 @@
             Status: <strong>{{ game.get_status_display }}</strong>
         </p>
     </div>
-    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary">Live Public GameCast</a>
+        {% if can_manage_team1_lineup %}
+            <a href="{% url 'game_lineup_builder' game.id game.team1.id %}" class="btn btn-secondary">
+                &#128221; Set Lineup ({{ game.team1.name }})
+            </a>
+        {% endif %}
+        {% if can_manage_team2_lineup %}
+            <a href="{% url 'game_lineup_builder' game.id game.team2.id %}" class="btn btn-secondary">
+                &#128221; Set Lineup ({{ game.team2.name }})
+            </a>
+        {% endif %}
         {% if can_score %}
-            <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Open 1-Person Dugout Console &amp; Walk-Up DJ</a>
+            <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Open Dugout Console &amp; Walk-Up DJ</a>
         {% endif %}
         {% if game.season %}
             <a href="{% url 'season_detail' game.season.id %}" class="btn btn-secondary">&larr; Back to Season</a>
         {% endif %}
     </div>
 </div>
+
+{% if is_rostered %}
+<!-- 1-Tap Player Attendance RSVP Widget -->
+<div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border:1px solid rgba(37,99,235,0.25); padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <div style="font-weight:700; font-size:1.05rem;">Are you playing in this game?</div>
+            <div style="font-size:0.86rem; color:var(--text-muted); margin-top:0.15rem;">
+                Let your coach know your attendance for <strong>{{ user_team.name }}</strong>.
+            </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;" id="rsvpButtonGroup">
+            <button type="button" class="btn btn-sm {% if user_rsvp == 'yes' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitGameRsvp('yes')">
+                &#128077; I'm In
+            </button>
+            <button type="button" class="btn btn-sm {% if user_rsvp == 'no' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitGameRsvp('no')">
+                &#128078; Can't Make It
+            </button>
+            <button type="button" class="btn btn-sm {% if user_rsvp == 'maybe' %}btn-accent{% else %}btn-secondary{% endif %}" onclick="submitGameRsvp('maybe')">
+                &#10067; Maybe
+            </button>
+            <span id="rsvpStatusMsg" style="font-size:0.82rem; font-weight:600; color:var(--text-muted); margin-left:0.25rem;">
+                {% if user_rsvp %}Confirmed: {{ user_rsvp|title }}{% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card" style="margin-bottom:1.5rem;">
     <h2>Player Box Score &amp; Statistics</h2>

@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db.models import F
-from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry
+from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP
 from core.services.notifications import send_discord_notification, send_twilio_sms
 from .forms import (
     LeagueForm, SeasonForm, TeamForm, SeasonRegistrationForm,
@@ -560,6 +560,38 @@ def game_detail(request, game_id):
         score_form = GameScoreForm(instance=game)
         stat_form = PlayerGameStatForm(game=game)
 
+    user = request.user
+    user_rsvp = None
+    is_rostered = False
+    user_team = None
+    can_manage_team1_lineup = False
+    can_manage_team2_lineup = False
+
+    if user.is_authenticated:
+        user_rsvp = game.get_player_rsvp(user)
+        if game.team1.players.filter(id=user.id).exists():
+            is_rostered = True
+            user_team = game.team1
+        elif game.team2.players.filter(id=user.id).exists():
+            is_rostered = True
+            user_team = game.team2
+
+        can_manage_team1_lineup = (
+            user == game.team1.captain or
+            user.can_manage_church(game.team1.church) or
+            user.can_manage_league(game.season.league) or
+            user.is_overall_commissioner
+        )
+        can_manage_team2_lineup = (
+            user == game.team2.captain or
+            user.can_manage_church(game.team2.church) or
+            user.can_manage_league(game.season.league) or
+            user.is_overall_commissioner
+        )
+
+    team1_rsvp_summary = game.get_team_rsvp_summary(game.team1)
+    team2_rsvp_summary = game.get_team_rsvp_summary(game.team2)
+
     return render(request, 'leagues/game_detail.html', {
         'game': game,
         'player_stats': player_stats,
@@ -567,6 +599,13 @@ def game_detail(request, game_id):
         'stat_form': stat_form,
         'suggested_categories': suggested_categories,
         'can_score': can_score,
+        'user_rsvp': user_rsvp,
+        'is_rostered': is_rostered,
+        'user_team': user_team,
+        'can_manage_team1_lineup': can_manage_team1_lineup,
+        'can_manage_team2_lineup': can_manage_team2_lineup,
+        'team1_rsvp_summary': team1_rsvp_summary,
+        'team2_rsvp_summary': team2_rsvp_summary,
     })
 
 
@@ -647,7 +686,8 @@ def _serialize_game_state(game: Game):
             'name': e.player.display_name,
             'jersey': e.player.jersey_number,
             'is_present': e.is_present,
-            'position': e.field_position,
+            'position': e.get_position_for_inning(game.current_inning) or e.field_position,
+            'base_position': e.field_position,
             'has_walkup': bool(e.player.walkup_song_file or e.player.walkup_song_title),
             'walkup_title': e.player.walkup_song_title,
         }
@@ -661,7 +701,8 @@ def _serialize_game_state(game: Game):
             'name': e.player.display_name,
             'jersey': e.player.jersey_number,
             'is_present': e.is_present,
-            'position': e.field_position,
+            'position': e.get_position_for_inning(game.current_inning) or e.field_position,
+            'base_position': e.field_position,
             'has_walkup': bool(e.player.walkup_song_file or e.player.walkup_song_title),
             'walkup_title': e.player.walkup_song_title,
         }
@@ -1113,4 +1154,178 @@ def practice_sandbox(request):
         'initial_state_json': json.dumps(initial_state),
         'selected_sport': sport,
         'sports': League.SPORT_CHOICES,
+    })
+
+
+@login_required
+def game_rsvp(request, game_id):
+    """1-Tap Attendance RSVP endpoint for players on team rosters."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    game = get_object_or_404(Game.objects.select_related('team1', 'team2', 'season'), id=game_id)
+    user = request.user
+
+    team = None
+    if game.team1.players.filter(id=user.id).exists():
+        team = game.team1
+    elif game.team2.players.filter(id=user.id).exists():
+        team = game.team2
+    else:
+        if not (user.is_overall_commissioner or user.can_manage_church(game.team1.church) or user.can_manage_church(game.team2.church)):
+            return JsonResponse({'error': 'You are not on the roster for either team in this game.'}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8')) if request.body else request.POST
+    except json.JSONDecodeError:
+        payload = request.POST
+
+    response_val = str(payload.get('response', '')).strip().lower()
+    if response_val not in ('yes', 'no', 'maybe'):
+        return JsonResponse({'error': 'Invalid response (must be yes, no, or maybe)'}, status=400)
+
+    notes = str(payload.get('notes', '')).strip()[:150]
+
+    rsvp, _created = GameRSVP.objects.update_or_create(
+        game=game,
+        player=user,
+        defaults={'response': response_val, 'notes': notes}
+    )
+
+    # Sync with GameLineupEntry if initialized
+    if team:
+        entry = game.lineup_entries.filter(team=team, player=user).first()
+        if entry:
+            entry.is_present = (response_val != 'no')
+            entry.save(update_fields=['is_present'])
+
+    team_summary = game.get_team_rsvp_summary(team) if team else {}
+    return JsonResponse({
+        'success': True,
+        'response': response_val,
+        'response_display': rsvp.get_response_display(),
+        'team_summary': team_summary,
+    })
+
+
+@login_required
+def game_lineup_builder(request, game_id, team_id):
+    """
+    Upcoming Game Lineup & Multi-Position Defensive Rotation Builder.
+    Allows coaches to configure batting orders and positions/rotations across innings/periods
+    ahead of game day, automatically factoring in confirmed player RSVPs.
+    """
+    game = get_object_or_404(
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church'),
+        id=game_id
+    )
+    team = get_object_or_404(
+        Team.objects.select_related('church', 'captain', 'season__league'),
+        id=team_id
+    )
+
+    if team not in (game.team1, game.team2):
+        messages.error(request, f"{team.name} is not participating in this game.")
+        return redirect('game_detail', game_id=game.id)
+
+    user = request.user
+    can_manage_lineup = (
+        user == team.captain or
+        user.can_manage_church(team.church) or
+        user.can_manage_league(game.season.league) or
+        user.is_overall_commissioner
+    )
+    if not can_manage_lineup:
+        messages.error(request, f"You do not have permission to manage the lineup for {team.name}.")
+        return redirect('game_detail', game_id=game.id)
+
+    game.ensure_lineups_initialized()
+
+    sport = game.season.league.sport if (game.season and game.season.league) else 'softball'
+    if sport in ('softball', 'baseball'):
+        available_positions = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'Rover', 'EH', 'Bench']
+        periods = [f"Inning {i}" for i in range(1, 8)]
+    elif sport == 'basketball':
+        available_positions = ['PG', 'SG', 'SF', 'PF', 'C', '6th Man', 'Bench']
+        periods = [f"Quarter {i}" for i in range(1, 5)]
+    elif sport in ('flag_football', 'soccer'):
+        available_positions = ['QB', 'WR', 'RB', 'C', 'DB', 'LB', 'Bench'] if sport == 'flag_football' else ['FWD', 'MID', 'DEF', 'GK', 'Bench']
+        periods = ['1st Half', '2nd Half']
+    else:
+        available_positions = ['Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5', 'Bench']
+        periods = ['Set 1', 'Set 2', 'Set 3']
+
+    if request.method == 'POST':
+        action = request.POST.get('action', 'save_lineup')
+
+        if action == 'autofill_rsvps':
+            # Move confirmed players ('yes') to top of lineup, benches 'no'
+            rsvps = {r.player_id: r.response for r in game.rsvps.filter(player__in=team.players.all())}
+            entries = list(game.lineup_entries.filter(team=team).select_related('player'))
+
+            def sort_key(e):
+                resp = rsvps.get(e.player_id, 'pending')
+                if resp == 'yes':
+                    return (0, e.batting_order)
+                elif resp in ('maybe', 'pending'):
+                    return (1, e.batting_order)
+                else:
+                    return (2, e.batting_order)
+
+            entries.sort(key=sort_key)
+            for new_idx, entry in enumerate(entries, start=1):
+                resp = rsvps.get(entry.player_id, 'pending')
+                entry.batting_order = new_idx
+                entry.is_present = (resp != 'no')
+                entry.save(update_fields=['batting_order', 'is_present'])
+
+            messages.success(request, f"⚡ Lineup auto-sorted for {team.name} based on confirmed player RSVPs!")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+        elif action == 'save_lineup':
+            entries = list(game.lineup_entries.filter(team=team).select_related('player'))
+            for entry in entries:
+                order_val = request.POST.get(f'order_{entry.id}')
+                pos_val = request.POST.get(f'position_{entry.id}', '').strip()
+                present_val = bool(request.POST.get(f'present_{entry.id}'))
+
+                rotations = {}
+                for period_idx in range(1, len(periods) + 1):
+                    p_val = request.POST.get(f'rotation_{entry.id}_{period_idx}', '').strip()
+                    if p_val:
+                        rotations[str(period_idx)] = p_val
+
+                if order_val and order_val.isdigit():
+                    entry.batting_order = int(order_val)
+                entry.field_position = pos_val
+                entry.position_rotations = rotations
+                entry.is_present = present_val
+                entry.save(update_fields=['batting_order', 'field_position', 'position_rotations', 'is_present'])
+
+            messages.success(request, f"Saved batting order and defensive rotations for {team.name}!")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+    entries = list(
+        game.lineup_entries.filter(team=team)
+        .select_related('player')
+        .order_by('batting_order', 'id')
+    )
+    rsvps = {r.player_id: r for r in game.rsvps.filter(player__in=team.players.all())}
+    for e in entries:
+        e.rsvp = rsvps.get(e.player_id)
+        # Pre-populate helper dict for period rotations
+        e.rotation_dict = e.position_rotations or {}
+
+    rsvp_summary = game.get_team_rsvp_summary(team)
+    opponent = game.team2 if team == game.team1 else game.team1
+
+    return render(request, 'leagues/lineup_builder.html', {
+        'game': game,
+        'team': team,
+        'opponent': opponent,
+        'entries': entries,
+        'available_positions': available_positions,
+        'periods': periods,
+        'rsvp_summary': rsvp_summary,
+        'sport': sport,
     })

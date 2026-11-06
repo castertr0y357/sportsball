@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Lineup &amp; Rotations: {{ team.name }} vs {{ opponent.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
+            <h1>{{ team.name }} &mdash; Lineup &amp; Rotations</h1>
+            <span class="badge badge-primary">{{ sport|title }}</span>
+            <span class="badge">{{ team.team_color|default:"Team" }}</span>
+        </div>
+        <p style="margin:0; color:var(--text-muted); font-size:0.95rem;">
+            Matchup: <strong>vs {{ opponent.name }}</strong> &bull;
+            {{ game.date|date:"l, M d, Y g:i A" }} &bull; {{ game.location }} &bull;
+            Status: <span class="badge">{{ game.get_status_display }}</span>
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary">&larr; Back to Game Center</a>
+        {% if can_score %}
+            <a href="{% url 'dugout_console' game.id %}" class="btn btn-secondary" title="Open live dugout scoreboard console">Dugout Console &rarr;</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Player Attendance & RSVP Summary Card -->
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <div style="font-size:0.82rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--text-muted); margin-bottom:0.35rem;">
+                Player Attendance &amp; Headcount ({{ rsvp_summary.total }} on Roster)
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                <span class="badge badge-success" style="font-size:0.85rem; padding:0.3rem 0.65rem;">
+                    &#10003; {{ rsvp_summary.yes }} Confirmed In
+                </span>
+                <span class="badge badge-danger" style="font-size:0.85rem; padding:0.3rem 0.65rem;">
+                    &times; {{ rsvp_summary.no }} Can't Make It
+                </span>
+                {% if rsvp_summary.maybe %}
+                <span class="badge badge-warning" style="font-size:0.85rem; padding:0.3rem 0.65rem;">
+                    ? {{ rsvp_summary.maybe }} Maybe
+                </span>
+                {% endif %}
+                {% if rsvp_summary.pending %}
+                <span class="badge" style="font-size:0.85rem; padding:0.3rem 0.65rem; background:rgba(100,116,139,0.15);">
+                    &#9711; {{ rsvp_summary.pending }} Awaiting Reply
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <!-- 1-Click Autofill from RSVPs Form -->
+            <form method="post" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" name="action" value="autofill_rsvps" class="btn btn-secondary btn-sm" title="Automatically put all Confirmed In players at the top of the batting order and bench absent players">
+                    &#9889; Autofill from RSVPs
+                </button>
+            </form>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyLineupCard()" title="Copy formatted lineup card to clipboard for team group chat">
+                &#128203; Share Lineup Card
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Main Lineup & Rotation Form -->
+<form method="post" id="lineupForm">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_lineup">
+
+    <div class="card" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+            <div>
+                <h2 style="margin:0;">Batting Order &amp; Defensive Rotations</h2>
+                <p style="margin:0.2rem 0 0; font-size:0.88rem; color:var(--text-muted);">
+                    Set batting order, primary/multi-position tags (e.g. <code>SS / P</code>), and defensive positions per inning.
+                </p>
+            </div>
+            <button type="submit" class="btn btn-accent" style="font-weight:700;">
+                &#128190; Save Lineup &amp; Rotations
+            </button>
+        </div>
+
+        <div class="table-wrap">
+            <table id="lineupTable">
+                <thead>
+                    <tr>
+                        <th style="width:70px; text-align:center;">Order</th>
+                        <th>Player</th>
+                        <th style="min-width:140px;">Primary / Multi-Position</th>
+                        {% for period in periods %}
+                            <th style="min-width:90px; text-align:center; font-size:0.82rem;">{{ period }}</th>
+                        {% endfor %}
+                        <th style="width:80px; text-align:center;">Playing</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in entries %}
+                    <tr class="{% if not e.is_present %}lineup-absent-row{% endif %}" id="row_{{ e.id }}">
+                        <!-- Order Input -->
+                        <td style="text-align:center;">
+                            <input type="number" name="order_{{ e.id }}" value="{{ e.batting_order }}" min="1" max="99"
+                                class="lineup-order-input" style="width:55px; text-align:center; padding:0.35rem 0.2rem; font-weight:700;">
+                        </td>
+
+                        <!-- Player Info & RSVP Pill -->
+                        <td>
+                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                                <strong>{{ e.player.display_name }}</strong>
+                                {% if e.player.jersey_number %}<span class="badge">#{{ e.player.jersey_number }}</span>{% endif %}
+                                {% if e.rsvp %}
+                                    {% if e.rsvp.response == 'yes' %}
+                                        <span class="badge badge-success" style="font-size:0.75rem;">&#10003; In</span>
+                                    {% elif e.rsvp.response == 'no' %}
+                                        <span class="badge badge-danger" style="font-size:0.75rem;">&times; Out</span>
+                                    {% else %}
+                                        <span class="badge badge-warning" style="font-size:0.75rem;">? Maybe</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge" style="font-size:0.72rem; opacity:0.7;">No RSVP</span>
+                                {% endif %}
+                            </div>
+                            {% if e.player.walkup_song_title %}
+                                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.15rem;">
+                                    &#127925; {{ e.player.walkup_song_title }}
+                                </div>
+                            {% endif %}
+                        </td>
+
+                        <!-- Primary / Multi-Position input -->
+                        <td>
+                            <input type="text" name="position_{{ e.id }}" value="{{ e.field_position }}"
+                                placeholder="e.g. SS / P" list="pos_list"
+                                style="width:100%; padding:0.35rem 0.5rem; font-size:0.85rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);">
+                        </td>
+
+                        <!-- Rotation Selectors Per Period / Inning -->
+                        {% for period in periods %}
+                        <td style="text-align:center;">
+                            {% with p_num=forloop.counter|stringformat:"s" %}
+                            <select name="rotation_{{ e.id }}_{{ forloop.counter }}" style="padding:0.3rem 0.25rem; font-size:0.8rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); width:100%; max-width:85px;">
+                                <option value="">--</option>
+                                {% for pos in available_positions %}
+                                    <option value="{{ pos }}" {% if e.rotation_dict|default:None and e.rotation_dict|slice:p_num == pos %}selected{% endif %}>
+                                        {{ pos }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            {% endwith %}
+                        </td>
+                        {% endfor %}
+
+                        <!-- In Lineup / Present Checkbox -->
+                        <td style="text-align:center;">
+                            <input type="checkbox" name="present_{{ e.id }}" value="1" {% if e.is_present %}checked{% endif %}
+                                title="Check to include in active lineup; uncheck to bench">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
+            <div style="font-size:0.85rem; color:var(--text-muted);">
+                💡 Tip: Players marked absent or un-checked will be skipped during game-day batting order advancement.
+            </div>
+            <button type="submit" class="btn btn-accent btn-lg" style="font-weight:700;">
+                &#128190; Save Lineup &amp; Rotations
+            </button>
+        </div>
+    </div>
+</form>
+
+<!-- Datalist for fast autocompletion -->
+<datalist id="pos_list">
+    {% for pos in available_positions %}
+        <option value="{{ pos }}"></option>
+    {% endfor %}
+    <option value="SS / P"></option>
+    <option value="1B / OF"></option>
+    <option value="C / DH"></option>
+    <option value="OF / Rover"></option>
+</datalist>
+
+<script>
+function copyLineupCard() {
+    const rows = document.querySelectorAll('#lineupTable tbody tr');
+    let text = "{{ team.name }} Lineup vs {{ opponent.name }}\n";
+    text += "Date: {{ game.date|date:'D, M d @ g:i A' }} | {{ game.location }}\n";
+    text += "--------------------------------------\n";
+
+    let activeCount = 0;
+    rows.forEach(row => {
+        const orderInput = row.querySelector('.lineup-order-input');
+        const nameEl = row.querySelector('strong');
+        const posInput = row.querySelector('input[name^="position_"]');
+        const presentBox = row.querySelector('input[name^="present_"]');
+
+        if (presentBox && presentBox.checked && nameEl) {
+            activeCount++;
+            const order = orderInput ? orderInput.value : activeCount;
+            const name = nameEl.innerText.trim();
+            const pos = posInput && posInput.value.trim() ? ` (${posInput.value.trim()})` : '';
+            text += `${order}. ${name}${pos}\n`;
+        }
+    });
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert("📋 Lineup card copied to clipboard!\nYou can paste it directly into your team group chat or WhatsApp.");
+        }).catch(() => {
+            prompt("Copy lineup card:", text);
+        });
+    } else {
+        prompt("Copy lineup card:", text);
+    }
+}
+</script>
+{% endblock %}
