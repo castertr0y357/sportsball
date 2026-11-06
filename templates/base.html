@@ -39,10 +39,15 @@
         </div>
 
         <div class="topbar-right">
-            <a href="{% url 'practice_sandbox' %}" class="btn-topbar-practice" title="Interactive Practice & Training Sandbox">
-                <span class="practice-icon">&#127918;</span>
-                <span class="practice-text">Practice Game</span>
-            </a>
+            {% if user.is_authenticated %}
+                <a href="{% url 'practice_sandbox' %}" class="btn-topbar-practice" title="Interactive Practice &amp; Training Sandbox">
+                    <span class="practice-icon">&#127918;</span>
+                    <span class="practice-text">Practice Game</span>
+                </a>
+            {% else %}
+                <a href="{% url 'login' %}" class="btn btn-sm btn-secondary" style="font-weight:600;">Log In</a>
+                <a href="{% url 'register' %}" class="btn btn-sm btn-accent" style="font-weight:700;">Join League</a>
+            {% endif %}
 
             <!-- Account / Settings Dropdown -->
             <div class="account-menu-wrapper" id="accountMenuWrapper">
@@ -57,9 +62,9 @@
                     </button>
                 {% else %}
                     <button type="button" class="account-btn account-btn-guest" id="accountDropdownBtn" aria-expanded="false" aria-haspopup="true">
-                        <span class="account-avatar guest-avatar">&#128100;</span>
+                        <span class="account-avatar guest-avatar">&#9881;</span>
                         <span class="account-name-block">
-                            <span class="account-name">Menu &amp; Settings</span>
+                            <span class="account-name">Settings</span>
                         </span>
                         <span class="account-caret">&#9662;</span>
                     </button>
@@ -88,8 +93,8 @@
                         </div>
                     {% else %}
                         <div class="dropdown-user-header">
-                            <div class="dropdown-user-name">Welcome to SportsBall</div>
-                            <div class="dropdown-user-meta">Sign in to manage teams and roster stats</div>
+                            <div class="dropdown-user-name">SportsBall Guest Settings</div>
+                            <div class="dropdown-user-meta">Configure theme, timezone, or install app</div>
                         </div>
                         <div class="dropdown-menu-links">
                             <a href="{% url 'login' %}" class="dropdown-item" role="menuitem">
@@ -98,16 +103,13 @@
                             <a href="{% url 'register' %}" class="dropdown-item" role="menuitem">
                                 <span class="dropdown-icon">&#127937;</span> Sign Up / Register
                             </a>
-                            <a href="{% url 'test_users_portal' %}" class="dropdown-item" role="menuitem">
-                                <span class="dropdown-icon">&#9881;</span> Testing Sandbox (Quick Switch)
-                            </a>
                         </div>
                     {% endif %}
 
                     <div class="dropdown-divider"></div>
 
                     <!-- App Preferences & Settings -->
-                    <div class="dropdown-section-title">&#9881; App Preferences</div>
+                    <div class="dropdown-section-title">&#9881; Preferences</div>
 
                     <!-- Theme Toggle -->
                     <div class="theme-switch-row">
@@ -169,22 +171,25 @@
             </div>
 
             <nav class="sidebar-nav">
-                <div class="sidebar-section-label">League Hub</div>
+                <div class="sidebar-section-label">Navigation</div>
                 <a href="{% url 'home' %}" class="sidebar-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
                     <span class="sidebar-icon">&#128202;</span>
-                    <span class="sidebar-text">Dashboard</span>
+                    <span class="sidebar-text">{% if user.is_authenticated %}Dashboard{% else %}Home / Leagues{% endif %}</span>
                 </a>
                 <a href="{% url 'league_list' %}" class="sidebar-link {% if 'league' in request.resolver_match.url_name or 'season' in request.resolver_match.url_name %}active{% endif %}">
                     <span class="sidebar-icon">&#127942;</span>
                     <span class="sidebar-text">Leagues &amp; Seasons</span>
                 </a>
+                <a href="{% url 'church_list' %}" class="sidebar-link {% if 'church' in request.resolver_match.url_name %}active{% endif %}">
+                    <span class="sidebar-icon">&#9962;</span>
+                    <span class="sidebar-text">Partner Churches</span>
+                </a>
+
+                {% if user.is_authenticated %}
+                <div class="sidebar-section-label">Member Hub</div>
                 <a href="{% url 'leaderboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'leaderboard' %}active{% endif %}">
                     <span class="sidebar-icon">&#128200;</span>
                     <span class="sidebar-text">Stat Leaderboards</span>
-                </a>
-                <a href="{% url 'church_list' %}" class="sidebar-link {% if 'church' in request.resolver_match.url_name %}active{% endif %}">
-                    <span class="sidebar-icon">&#9962;</span>
-                    <span class="sidebar-text">Church Directory</span>
                 </a>
                 <a href="{% url 'free_agent_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'free_agent_list' %}active{% endif %}">
                     <span class="sidebar-icon">&#127939;</span>
@@ -204,6 +209,7 @@
                     <span class="sidebar-icon">&#9881;</span>
                     <span class="sidebar-text">Testing Sandbox</span>
                 </a>
+                {% endif %}
             </nav>
 
             <div class="sidebar-footer">

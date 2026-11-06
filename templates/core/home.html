@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | SportsBall{% endblock %}
+{% block title %}{% if user.is_authenticated %}Dashboard | SportsBall{% else %}SportsBall | Rec &amp; Church Sports Leagues{% endif %}{% endblock %}
 
 {% block content %}
+
+{% if user.is_authenticated %}
+<!-- =========================================================================
+     AUTHENTICATED MEMBER DASHBOARD
+     ========================================================================= -->
 <div class="page-header">
     <div>
         <h1 style="font-size:1.65rem; margin-bottom:0.25rem;">
-            {% if user.is_authenticated %}
-                Welcome back, {{ user.display_name }}!
-            {% else %}
-                Welcome to SportsBall
-            {% endif %}
+            Welcome back, {{ user.display_name }}!
         </h1>
         <p style="margin:0; color:var(--text-muted); font-size:0.92rem;">
             Rec League Hub &bull; {{ churches_count }} Partner Churches &bull; {{ leagues_count }} Active Sports Ministries
@@ -21,9 +22,7 @@
     </div>
 </div>
 
-<!-- =========================================================================
-     Contextual "Happening Right Now" / Game Day Banner (Appears only when active)
-     ========================================================================= -->
+<!-- Contextual Live Game in Progress Banner -->
 {% if live_games %}
     {% for g in live_games %}
     <div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); color:#fff; border:1px solid #3b82f6;">
@@ -47,7 +46,7 @@
                 <a href="{% url 'gamecast' g.id %}" class="btn btn-accent" style="font-weight:700;">
                     📡 Watch Live GameCast
                 </a>
-                {% if user.is_authenticated and user.can_record_scores %}
+                {% if user.can_record_scores %}
                 <a href="{% url 'dugout_console' g.id %}" class="btn btn-secondary" style="background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">
                     ⚾ Open Dugout Scoreboard
                 </a>
@@ -69,7 +68,7 @@
                 </p>
             </div>
             <div>
-                {% if user.is_authenticated and user.can_record_scores %}
+                {% if user.can_record_scores %}
                     <a href="{% url 'dugout_console' today_games.first.id %}" class="btn btn-accent">
                         Score Today's Game &rarr;
                     </a>
@@ -83,7 +82,7 @@
     </div>
 {% endif %}
 
-<!-- Personalized Next Game Highlight for Players & Coaches -->
+<!-- Personalized Next Game Highlight -->
 {% if my_next_game and not live_games and not today_games %}
 <div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:0.85rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
@@ -110,7 +109,7 @@
 </div>
 {% endif %}
 
-<!-- Urgent Alerts (e.g. Rainout) -->
+<!-- Urgent Alerts -->
 {% if urgent_alerts %}
     {% for alert in urgent_alerts %}
         <div class="alert alert-urgent" style="display:flex; align-items:flex-start; gap:0.75rem;">
@@ -123,7 +122,7 @@
     {% endfor %}
 {% endif %}
 
-<!-- Weekly Devotional -->
+<!-- Devotional -->
 {% if devotional %}
     <div class="alert alert-devotional" style="margin-bottom:1.5rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
@@ -136,9 +135,9 @@
     </div>
 {% endif %}
 
-<!-- Main Grid Layout -->
+<!-- Member Main Operational Grid -->
 <div class="grid grid-2" style="margin-bottom:1.5rem;">
-    <!-- Active Seasons & Mini-Standings -->
+    <!-- Active Seasons -->
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
             <h2 style="font-size:1.15rem; margin:0;">Active Seasons</h2>
@@ -216,7 +215,6 @@
     </div>
 </div>
 
-<!-- Upcoming Games & Recent Results Grid -->
 <div class="grid grid-2">
     <!-- Upcoming Games -->
     <div class="card">
@@ -251,7 +249,7 @@
                             <td style="text-align:right;">
                                 {% if g.status == 'in_progress' %}
                                     <a href="{% url 'gamecast' g.id %}" class="btn btn-sm btn-accent">🔴 GameCast</a>
-                                {% elif user.is_authenticated and user.can_record_scores and g.date.date == today %}
+                                {% elif user.can_record_scores and g.date.date == today %}
                                     <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Score</a>
                                 {% else %}
                                     <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
@@ -310,4 +308,154 @@
         {% endif %}
     </div>
 </div>
+
+{% else %}
+<!-- =========================================================================
+     GUEST / UNREGISTERED LANDING & REGISTRATION PORTAL
+     (Clean, inviting, no operational clutter)
+     ========================================================================= -->
+
+<!-- Live Gamecast Banner: Only appears if a game is actively in progress right now -->
+{% if live_games %}
+    {% for g in live_games %}
+    <div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); color:#fff; border:1px solid #3b82f6;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+                <span class="badge" style="background:#ef4444; color:#fff; font-weight:700; letter-spacing:0.04em;">
+                    <span style="display:inline-block; width:8px; height:8px; background:#fff; border-radius:50%; margin-right:4px;"></span>
+                    LIVE GAME IN PROGRESS
+                </span>
+                <span class="badge" style="background:rgba(255,255,255,0.15); color:#fff; margin-left:0.35rem;">
+                    {{ g.season.league.get_sport_display }}
+                </span>
+                <h2 style="margin:0.4rem 0 0.15rem; color:#fff; font-size:1.35rem;">
+                    {{ g.team1.name }} ({{ g.team1_score }}) vs ({{ g.team2_score }}) {{ g.team2.name }}
+                </h2>
+                <p style="margin:0; font-size:0.88rem; color:#cbd5e1;">
+                    {{ g.location }} &bull; {{ g.season.name }}
+                </p>
+            </div>
+            <div>
+                <a href="{% url 'gamecast' g.id %}" class="btn btn-accent" style="font-weight:700;">
+                    📡 Watch Live GameCast
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Clean Guest Welcome Hero -->
+<div class="card" style="margin-bottom:2rem; padding:2.5rem 1.75rem; text-align:center; background:linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%); border:1px solid var(--border);">
+    <div style="font-size:2.5rem; line-height:1; margin-bottom:0.75rem;">⚾ 🏀 🏈 🏐</div>
+    <h1 style="font-size:2.2rem; font-weight:800; letter-spacing:-0.03em; margin:0 0 0.5rem; color:var(--text);">
+        SportsBall
+    </h1>
+    <p style="font-size:1.15rem; font-weight:600; color:var(--primary); margin:0 0 0.75rem;">
+        Because running a league shouldn't require a master's degree.
+    </p>
+    <p style="max-width:640px; margin:0 auto 1.5rem; font-size:0.95rem; color:var(--text-muted); line-height:1.6;">
+        A simplified sports league platform and Progressive Web App for church and rec fellowships.
+        Enjoy 1-tap dugout scorekeeping, custom walk-up music for players, and real-time public gamecasts.
+    </p>
+    <div style="display:flex; justify-content:center; gap:0.75rem; flex-wrap:wrap;">
+        <a href="{% url 'register' %}" class="btn btn-accent" style="font-size:1rem; padding:0.65rem 1.4rem; font-weight:700;">
+            🚀 Join / Register to Play
+        </a>
+        <a href="{% url 'login' %}" class="btn btn-secondary" style="font-size:1rem; padding:0.65rem 1.25rem;">
+            🔑 Sign In
+        </a>
+        <a href="{% url 'church_list' %}" class="btn btn-secondary" style="font-size:1rem; padding:0.65rem 1.25rem;">
+            ⛪ Partner Churches
+        </a>
+    </div>
+</div>
+
+<!-- Open Leagues & Seasons Available to Join -->
+<div style="margin-bottom:2.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <div>
+            <h2 style="font-size:1.35rem; margin:0;">Available Leagues &amp; Seasons</h2>
+            <p style="margin:0.2rem 0 0; color:var(--text-muted); font-size:0.88rem;">
+                Explore current sports open for team or free-agent registration
+            </p>
+        </div>
+        <a href="{% url 'league_list' %}" style="font-size:0.88rem; font-weight:600;">View All Leagues &rarr;</a>
+    </div>
+
+    {% if active_seasons %}
+        <div class="grid grid-2">
+            {% for s in active_seasons %}
+            <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border-top:3px solid var(--primary);">
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem; margin-bottom:0.5rem;">
+                        <span class="badge badge-primary">{{ s.league.get_sport_display }}</span>
+                        {% if s.registration_open %}
+                            <span class="badge badge-success">Registration Open</span>
+                        {% else %}
+                            <span class="badge">In Season</span>
+                        {% endif %}
+                    </div>
+                    <h3 style="margin:0 0 0.35rem; font-size:1.2rem;">{{ s.league.name }}</h3>
+                    <div style="font-weight:600; color:var(--text-muted); font-size:0.92rem; margin-bottom:0.5rem;">
+                        {{ s.name }}
+                    </div>
+                    <p style="font-size:0.88rem; color:var(--text-muted); margin:0 0 1rem;">
+                        {{ s.league.description|default:"Weekly church fellowship sports league."|truncatewords:20 }}
+                    </p>
+                </div>
+                <div style="border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                    <div>
+                        <span style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">Dues:</span>
+                        <strong style="color:var(--text); font-size:1rem;">
+                            {% if s.registration_fee > 0 %}${{ s.registration_fee }}{% else %}Free{% endif %}
+                        </strong>
+                    </div>
+                    <div>
+                        <a href="{% url 'register_for_season' s.id %}" class="btn btn-sm btn-accent">
+                            Register for Season &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card" style="text-align:center; padding:2rem;">
+            <p style="color:var(--text-muted); margin:0 0 1rem;">There are currently no active seasons open for registration.</p>
+            <a href="{% url 'league_list' %}" class="btn btn-secondary">Browse League Archives</a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- 3 Simple Steps for New Players -->
+<div class="card" style="background:var(--surface); border:1px solid var(--border); padding:1.75rem;">
+    <h3 style="text-align:center; margin:0 0 1.25rem; font-size:1.15rem;">How SportsBall Works</h3>
+    <div class="grid grid-3" style="text-align:center;">
+        <div>
+            <div style="font-size:1.8rem; margin-bottom:0.4rem;">📝</div>
+            <h4 style="margin:0 0 0.25rem;">1. Sign Up in 2 Minutes</h4>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:0;">
+                Create your player account, link with your home church, or join as an independent free agent.
+            </p>
+        </div>
+        <div>
+            <div style="font-size:1.8rem; margin-bottom:0.4rem;">🎵</div>
+            <h4 style="margin:0 0 0.25rem;">2. Pick Your Walk-Up Banger</h4>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:0;">
+                Upload your personal walk-up song clip. It auto-plays through the dugout Bluetooth speaker when you step up to bat!
+            </p>
+        </div>
+        <div>
+            <div style="font-size:1.8rem; margin-bottom:0.4rem;">📱</div>
+            <h4 style="margin:0 0 0.25rem;">3. Show Up &amp; Have Fun</h4>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:0;">
+                Live gamecast scoring, dynamic sports clocks, and automatic standings with zero volunteer headaches.
+            </p>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
 {% endblock %}

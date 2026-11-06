@@ -942,6 +942,7 @@ def gamecast(request, game_id):
     })
 
 
+@login_required
 def practice_sandbox(request):
     """
     Practice & Training Sandbox:
