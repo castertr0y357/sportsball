@@ -1,58 +1,246 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="system">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1e3a8a">
     <link rel="manifest" href="{% static 'manifest.json' %}">
     <title>{% block title %}SportsBall{% endblock %}</title>
+    <!-- Prevent FOUC by executing theme and timezone bootstrap before render -->
+    <script>
+      (function() {
+        try {
+          const savedTheme = localStorage.getItem('sportsball_theme') || 'system';
+          document.documentElement.setAttribute('data-theme', savedTheme);
+          const savedTz = localStorage.getItem('sportsball_timezone');
+          if (!savedTz) {
+            const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detectedTz) localStorage.setItem('sportsball_timezone', detectedTz);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
 </head>
 <body>
-    <header class="navbar">
-        <div class="navbar-inner">
-            <a href="{% url 'home' %}" class="brand">&#9918; SportsBall</a>
-            <nav class="nav-links">
-                <a href="{% url 'home' %}">Dashboard</a>
-                <a href="{% url 'league_list' %}">Leagues &amp; Seasons</a>
-                <a href="{% url 'leaderboard' %}">Stat Leaderboards</a>
-                <a href="{% url 'church_list' %}">Church Directory</a>
-                <a href="{% url 'free_agent_list' %}">Free Agents</a>
-                <a href="{% url 'announcement_list' %}">Announcements</a>
-                <a href="{% url 'practice_sandbox' %}" style="color:#6ee7b7; font-weight:700;">&#127918; Practice Game</a>
-                <a href="{% url 'test_users_portal' %}" style="color:#fde68a;">&#9881; Testing Sandbox</a>
+    <!-- Top Header Bar -->
+    <header class="app-topbar">
+        <div class="topbar-left">
+            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Menu">
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+            </button>
+            <a href="{% url 'home' %}" class="brand">
+                <span class="brand-ball">&#9918;</span>
+                <span class="brand-name">SportsBall</span>
+            </a>
+        </div>
+
+        <div class="topbar-right">
+            <a href="{% url 'practice_sandbox' %}" class="btn-topbar-practice" title="Interactive Practice & Training Sandbox">
+                <span class="practice-icon">&#127918;</span>
+                <span class="practice-text">Practice Game</span>
+            </a>
+
+            <!-- Account / Settings Dropdown -->
+            <div class="account-menu-wrapper" id="accountMenuWrapper">
                 {% if user.is_authenticated %}
-                    <a href="{% url 'profile' %}">{{ user.display_name }} ({{ user.get_role_display }})</a>
-                    <form action="{% url 'logout' %}" method="post" style="display:inline; margin:0;">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-secondary">Log Out</button>
-                    </form>
+                    <button type="button" class="account-btn" id="accountDropdownBtn" aria-expanded="false" aria-haspopup="true">
+                        <span class="account-avatar">{{ user.username|slice:":2"|upper }}</span>
+                        <span class="account-name-block">
+                            <span class="account-name">{{ user.display_name }}</span>
+                            <span class="account-role-badge">{{ user.get_role_display }}</span>
+                        </span>
+                        <span class="account-caret">&#9662;</span>
+                    </button>
                 {% else %}
-                    <a href="{% url 'login' %}">Log In</a>
-                    <a href="{% url 'register' %}" class="btn btn-sm btn-accent">Sign Up</a>
+                    <button type="button" class="account-btn account-btn-guest" id="accountDropdownBtn" aria-expanded="false" aria-haspopup="true">
+                        <span class="account-avatar guest-avatar">&#128100;</span>
+                        <span class="account-name-block">
+                            <span class="account-name">Menu &amp; Settings</span>
+                        </span>
+                        <span class="account-caret">&#9662;</span>
+                    </button>
                 {% endif %}
-            </nav>
+
+                <!-- Dropdown Menu Panel -->
+                <div class="account-dropdown-panel" id="accountDropdownMenu" role="menu">
+                    {% if user.is_authenticated %}
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-user-name">{{ user.display_name }}</div>
+                            <div class="dropdown-user-meta">{{ user.email|default:user.username }} &bull; {{ user.get_role_display }}</div>
+                        </div>
+                        <div class="dropdown-menu-links">
+                            <a href="{% url 'profile' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#128100;</span> My Profile
+                            </a>
+                            <a href="{% url 'edit_profile' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#127925;</span> Edit Profile &amp; Walk-Up Song
+                            </a>
+                            <a href="{% url 'sign_waiver' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#9997;</span> Liability Waiver &amp; Covenant
+                            </a>
+                            <a href="{% url 'test_users_portal' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#9881;</span> Testing Sandbox (Switch Role)
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-user-name">Welcome to SportsBall</div>
+                            <div class="dropdown-user-meta">Sign in to manage teams and roster stats</div>
+                        </div>
+                        <div class="dropdown-menu-links">
+                            <a href="{% url 'login' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#128272;</span> Log In
+                            </a>
+                            <a href="{% url 'register' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#127937;</span> Sign Up / Register
+                            </a>
+                            <a href="{% url 'test_users_portal' %}" class="dropdown-item" role="menuitem">
+                                <span class="dropdown-icon">&#9881;</span> Testing Sandbox (Quick Switch)
+                            </a>
+                        </div>
+                    {% endif %}
+
+                    <div class="dropdown-divider"></div>
+
+                    <!-- App Preferences & Settings -->
+                    <div class="dropdown-section-title">&#9881; App Preferences</div>
+
+                    <!-- Theme Toggle -->
+                    <div class="theme-switch-row">
+                        <span class="theme-switch-label">Theme</span>
+                        <div class="theme-btn-group" id="themeBtnGroup">
+                            <button type="button" class="theme-btn" data-theme-val="light" title="Light theme">&#9728;&#65039; Light</button>
+                            <button type="button" class="theme-btn" data-theme-val="dark" title="Dark theme">&#127769; Dark</button>
+                            <button type="button" class="theme-btn" data-theme-val="system" title="System theme">&#128187; Auto</button>
+                        </div>
+                    </div>
+
+                    <!-- Timezone Preference -->
+                    <div class="timezone-row">
+                        <label class="timezone-label" for="userTimezoneSelect">&#128339; Timezone</label>
+                        <select id="userTimezoneSelect" class="timezone-select">
+                            <option value="auto">Auto-Detect (Browser)</option>
+                            <option value="America/New_York">Eastern Time (US / New York)</option>
+                            <option value="America/Chicago">Central Time (US / Chicago)</option>
+                            <option value="America/Denver">Mountain Time (US / Denver)</option>
+                            <option value="America/Los_Angeles">Pacific Time (US / Los Angeles)</option>
+                            <option value="America/Anchorage">Alaska Time (US / Anchorage)</option>
+                            <option value="Pacific/Honolulu">Hawaii Time (US / Honolulu)</option>
+                            <option value="UTC">UTC / Coordinated Universal</option>
+                        </select>
+                        <div class="timezone-preview" id="timezonePreview" style="font-size:0.72rem; color:var(--text-muted); margin-top:0.25rem;"></div>
+                    </div>
+
+                    <!-- Install Mobile PWA Button -->
+                    <div class="pwa-row">
+                        <button type="button" id="pwaInstallBtn" class="btn-pwa-install">
+                            <span class="pwa-icon">&#128242;</span>
+                            <span id="pwaInstallLabel">Install Mobile App (PWA)</span>
+                        </button>
+                        <div id="pwaInstallHelp" style="display:none; font-size:0.72rem; color:var(--text-muted); margin-top:0.25rem; line-height:1.2;"></div>
+                    </div>
+
+                    {% if user.is_authenticated %}
+                        <div class="dropdown-divider"></div>
+                        <div class="logout-form-wrapper">
+                            <form action="{% url 'logout' %}" method="post" style="margin:0;">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-logout-btn">
+                                    <span>&#128682;</span> Log Out
+                                </button>
+                            </form>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </header>
 
-    <main class="container">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% else %}alert-warning{% endif %}">
-                    {{ message }}
+    <!-- App Body Layout with Left Anchored Sidebar -->
+    <div class="app-layout">
+        <aside class="app-sidebar" id="appSidebar">
+            <div class="sidebar-header-mobile">
+                <div class="sidebar-brand-mobile">&#9918; SportsBall</div>
+                <button type="button" class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Close sidebar">&times;</button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-label">League Hub</div>
+                <a href="{% url 'home' %}" class="sidebar-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+                    <span class="sidebar-icon">&#128202;</span>
+                    <span class="sidebar-text">Dashboard</span>
+                </a>
+                <a href="{% url 'league_list' %}" class="sidebar-link {% if 'league' in request.resolver_match.url_name or 'season' in request.resolver_match.url_name %}active{% endif %}">
+                    <span class="sidebar-icon">&#127942;</span>
+                    <span class="sidebar-text">Leagues &amp; Seasons</span>
+                </a>
+                <a href="{% url 'leaderboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'leaderboard' %}active{% endif %}">
+                    <span class="sidebar-icon">&#128200;</span>
+                    <span class="sidebar-text">Stat Leaderboards</span>
+                </a>
+                <a href="{% url 'church_list' %}" class="sidebar-link {% if 'church' in request.resolver_match.url_name %}active{% endif %}">
+                    <span class="sidebar-icon">&#9962;</span>
+                    <span class="sidebar-text">Church Directory</span>
+                </a>
+                <a href="{% url 'free_agent_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'free_agent_list' %}active{% endif %}">
+                    <span class="sidebar-icon">&#127939;</span>
+                    <span class="sidebar-text">Free Agents</span>
+                </a>
+                <a href="{% url 'announcement_list' %}" class="sidebar-link {% if 'announcement' in request.resolver_match.url_name %}active{% endif %}">
+                    <span class="sidebar-icon">&#128226;</span>
+                    <span class="sidebar-text">Announcements</span>
+                </a>
+
+                <div class="sidebar-section-label">Volunteer &amp; Testing</div>
+                <a href="{% url 'practice_sandbox' %}" class="sidebar-link {% if request.resolver_match.url_name == 'practice_sandbox' %}active{% endif %}">
+                    <span class="sidebar-icon">&#127918;</span>
+                    <span class="sidebar-text">Practice Sandbox</span>
+                </a>
+                <a href="{% url 'test_users_portal' %}" class="sidebar-link {% if request.resolver_match.url_name == 'test_users_portal' %}active{% endif %}">
+                    <span class="sidebar-icon">&#9881;</span>
+                    <span class="sidebar-text">Testing Sandbox</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="pwa-status-pill" id="networkStatusBadge">
+                    <span class="status-dot" id="networkStatusDot"></span>
+                    <span id="networkStatusText">Online</span>
                 </div>
-            {% endfor %}
-        {% endif %}
+                <div class="sidebar-footer-tagline">SportsBall &bull; Local-First PWA</div>
+            </div>
+        </aside>
 
-        {% block content %}{% endblock %}
-    </main>
+        <!-- Mobile Drawer Backdrop -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-    <footer>
-        <p><strong>SportsBall</strong> &mdash; Rec League Scorekeeping, Fellowship &amp; Ballpark Walk-Up Bangers</p>
-    </footer>
+        <!-- Main Content Area -->
+        <div class="app-content-wrapper">
+            <main class="container">
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% else %}alert-warning{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
 
+                {% block content %}{% endblock %}
+            </main>
+
+            <footer>
+                <p><strong>SportsBall</strong> &mdash; Because running a league shouldn't require a master's degree.</p>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Interactive Client Scripts -->
     <script>
+    // 1. Service Worker Registration
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js').catch(err => {
@@ -60,6 +248,188 @@
             });
         });
     }
+
+    // 2. Sidebar Drawer / Toggle
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+    function toggleSidebar() {
+        if (window.innerWidth < 992) {
+            document.body.classList.toggle('sidebar-open');
+        } else {
+            document.body.classList.toggle('sidebar-collapsed');
+            try {
+                localStorage.setItem('sportsball_sidebar_collapsed', document.body.classList.contains('sidebar-collapsed'));
+            } catch(e) {}
+        }
+    }
+
+    function closeMobileSidebar() {
+        document.body.classList.remove('sidebar-open');
+    }
+
+    if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
+    if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', closeMobileSidebar);
+    if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
+    // Restore desktop collapsed state
+    try {
+        if (localStorage.getItem('sportsball_sidebar_collapsed') === 'true' && window.innerWidth >= 992) {
+            document.body.classList.add('sidebar-collapsed');
+        }
+    } catch(e) {}
+
+    // 3. Account / Settings Dropdown
+    const accountDropdownBtn = document.getElementById('accountDropdownBtn');
+    const accountDropdownMenu = document.getElementById('accountDropdownMenu');
+
+    if (accountDropdownBtn && accountDropdownMenu) {
+        accountDropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = accountDropdownMenu.classList.toggle('show');
+            accountDropdownBtn.setAttribute('aria-expanded', isOpen);
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!accountDropdownMenu.contains(e.target) && !accountDropdownBtn.contains(e.target)) {
+                accountDropdownMenu.classList.remove('show');
+                accountDropdownBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && accountDropdownMenu.classList.contains('show')) {
+                accountDropdownMenu.classList.remove('show');
+                accountDropdownBtn.setAttribute('aria-expanded', 'false');
+                accountDropdownBtn.focus();
+            }
+        });
+    }
+
+    // 4. Theme Switcher (Light / Dark / Auto)
+    function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        try {
+            localStorage.setItem('sportsball_theme', theme);
+        } catch(e) {}
+        document.querySelectorAll('.theme-btn').forEach(btn => {
+            if (btn.getAttribute('data-theme-val') === theme) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    const currentTheme = localStorage.getItem('sportsball_theme') || 'system';
+    applyTheme(currentTheme);
+
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const theme = btn.getAttribute('data-theme-val');
+            applyTheme(theme);
+        });
+    });
+
+    // 5. Timezone Management
+    const timezoneSelect = document.getElementById('userTimezoneSelect');
+    const timezonePreview = document.getElementById('timezonePreview');
+
+    function updateTimezonePreview(tz) {
+        if (!timezonePreview) return;
+        try {
+            const actualTz = (tz === 'auto' || !tz) ? Intl.DateTimeFormat().resolvedOptions().timeZone : tz;
+            const nowStr = new Intl.DateTimeFormat('en-US', {
+                timeZone: actualTz,
+                hour: 'numeric',
+                minute: 'numeric',
+                second: 'numeric',
+                timeZoneName: 'short'
+            }).format(new Date());
+            timezonePreview.textContent = `Time: ${nowStr} (${actualTz})`;
+        } catch(e) {
+            timezonePreview.textContent = '';
+        }
+    }
+
+    if (timezoneSelect) {
+        const savedTz = localStorage.getItem('sportsball_timezone') || 'auto';
+        timezoneSelect.value = savedTz;
+        updateTimezonePreview(savedTz);
+
+        timezoneSelect.addEventListener('change', (e) => {
+            const selected = e.target.value;
+            try {
+                localStorage.setItem('sportsball_timezone', selected);
+            } catch(err) {}
+            updateTimezonePreview(selected);
+        });
+    }
+
+    // 6. PWA Installation Handling
+    let deferredInstallPrompt = null;
+    const pwaInstallBtn = document.getElementById('pwaInstallBtn');
+    const pwaInstallLabel = document.getElementById('pwaInstallLabel');
+    const pwaInstallHelp = document.getElementById('pwaInstallHelp');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        if (pwaInstallLabel) pwaInstallLabel.textContent = '📲 Install SportsBall App';
+    });
+
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+        if (pwaInstallLabel) pwaInstallLabel.textContent = '✓ App Installed';
+        if (pwaInstallBtn) pwaInstallBtn.disabled = true;
+    }
+
+    if (pwaInstallBtn) {
+        pwaInstallBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                const { outcome } = await deferredInstallPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    if (pwaInstallLabel) pwaInstallLabel.textContent = '✓ App Installed';
+                }
+                deferredInstallPrompt = null;
+            } else if (window.matchMedia('(display-mode: standalone)').matches) {
+                alert('SportsBall is already installed on this device.');
+            } else {
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIOS) {
+                    if (pwaInstallHelp) {
+                        pwaInstallHelp.style.display = 'block';
+                        pwaInstallHelp.innerHTML = '📲 <strong>To install on iOS</strong>: Tap the <strong>Share</strong> button (square with arrow up) at the bottom of Safari, then choose <strong>"Add to Home Screen"</strong>.';
+                    } else {
+                        alert('To install on iPhone/iPad: Tap the Share button in Safari and choose "Add to Home Screen".');
+                    }
+                } else {
+                    alert('To install SportsBall: Open your browser menu (three dots) and select "Install App" or "Add to Home screen".');
+                }
+            }
+        });
+    }
+
+    // 7. Live Online/Offline Network Status
+    const networkStatusDot = document.getElementById('networkStatusDot');
+    const networkStatusText = document.getElementById('networkStatusText');
+
+    function updateNetworkStatus() {
+        if (!networkStatusDot || !networkStatusText) return;
+        if (navigator.onLine) {
+            networkStatusDot.className = 'status-dot';
+            networkStatusText.textContent = 'Online';
+        } else {
+            networkStatusDot.className = 'status-dot offline';
+            networkStatusText.textContent = 'Offline (Local)';
+        }
+    }
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+    updateNetworkStatus();
     </script>
 </body>
 </html>
