@@ -233,6 +233,9 @@ class ChurchSportsLeaguesTestSuite(TestCase):
             'notes': 'Great fellowship game',
         })
         game.refresh_from_db()
+        # Coach submission enters pending confirmation until verified
+        self.assertEqual(game.status, 'pending_confirmation')
+        game.confirm_score(self.admin_user)
         self.assertEqual(game.status, 'completed')
         self.assertEqual(game.winner, self.team1)
 
@@ -634,7 +637,9 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         )
         self.assertEqual(resp_captain_ajax.status_code, 200)
 
-        # 4. Impartial referee can also operate Dugout action
+        # 4. Impartial referee can also operate Dugout action (clear lock from step 3)
+        unrelated_game.active_scorer = None
+        unrelated_game.save()
         ref = CustomUser.objects.create_user(
             username="ref_user",
             password="password123",
@@ -1561,3 +1566,253 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertContains(resp_rostered, 'id="seeAllScheduleBtn"')
         self.assertContains(resp_rostered, 'See All &rarr;')
         self.assertContains(resp_rostered, 'id="btnTabResults"')
+
+    def test_dugout_active_scorer_lock_and_takeover(self):
+        # Setup: Coach 1 (team1 captain) and Coach 2 (team2 captain)
+        coach2 = CustomUser.objects.create_user(
+            username="coach2_user", password="password123", role="coach", church=self.church
+        )
+        self.team2.captain = coach2
+        self.team2.save()
+
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Diamond 1", status='scheduled'
+        )
+
+        # 1. Coach 1 opens console -> acquires lock
+        self.client.login(username="coach_user", password="password123")
+        resp = self.client.get(reverse('dugout_console', args=[game.id]))
+        self.assertEqual(resp.status_code, 200)
+        game.refresh_from_db()
+        self.assertEqual(game.active_scorer, self.coach_user)
+
+        # 2. Coach 2 attempts an action -> HTTP 423 Locked
+        self.client.login(username="coach2_user", password="password123")
+        action_resp = self.client.post(
+            reverse('dugout_action', args=[game.id]),
+            data=json.dumps({'action': 'run_plus', 'team': 'team2'}),
+            content_type='application/json'
+        )
+        self.assertEqual(action_resp.status_code, 423)
+        self.assertTrue(action_resp.json().get('locked'))
+        self.assertIn("currently active", action_resp.json().get('error'))
+
+        # 3. Coach 2 takes over scoring
+        takeover_resp = self.client.post(
+            reverse('take_over_dugout_scoring', args=[game.id]),
+            content_type='application/json'
+        )
+        self.assertEqual(takeover_resp.status_code, 200)
+        game.refresh_from_db()
+        self.assertEqual(game.active_scorer, coach2)
+
+        # 4. Now Coach 2 can successfully score
+        action_resp2 = self.client.post(
+            reverse('dugout_action', args=[game.id]),
+            data=json.dumps({'action': 'run_plus', 'team': 'team2', 'points': 1}),
+            content_type='application/json'
+        )
+        self.assertEqual(action_resp2.status_code, 200)
+        game.refresh_from_db()
+        self.assertEqual(game.team2_score, 1)
+
+
+    def test_official_referee_score_submission_bypasses_confirmation(self):
+        # Certified referee assigned in Officials Hub
+        referee = CustomUser.objects.create_user(
+            username="referee_bob", password="password123", role="referee", church=self.church
+        )
+        self.season.officials_pool.add(referee)
+
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Court 1", status='scheduled'
+        )
+        from leagues.models import GameOfficialAssignment
+        GameOfficialAssignment.objects.create(
+            game=game, official=referee, role='head_ref', status='confirmed'
+        )
+
+        # Referee submits score
+        self.client.login(username="referee_bob", password="password123")
+        post_data = {
+            'team1_score': 55,
+            'team2_score': 48,
+            'status': 'completed',
+            'notes': 'Clean game officiated by Bob.'
+        }
+        resp = self.client.post(reverse('record_game_score', args=[game.id]), post_data)
+        self.assertEqual(resp.status_code, 302)
+
+        game.refresh_from_db()
+        # Authoritative: immediately completed and confirmed
+        self.assertEqual(game.status, 'completed')
+        self.assertTrue(game.score_confirmed)
+        self.assertEqual(game.score_submitted_by, referee)
+
+        # Standings immediately count the win
+        standings = self.season.get_standings()
+        eagles_standing = next(s for s in standings if s['team'] == self.team1)
+        self.assertEqual(eagles_standing['wins'], 1)
+
+        # Coach cannot overwrite referee score
+        self.client.login(username="coach_user", password="password123")
+        overwrite_resp = self.client.post(reverse('record_game_score', args=[game.id]), {
+            'team1_score': 60,
+            'team2_score': 48,
+            'status': 'completed'
+        })
+        self.assertEqual(overwrite_resp.status_code, 302)
+        game.refresh_from_db()
+        self.assertEqual(game.team1_score, 55)  # Unchanged!
+
+
+    def test_coach_score_submission_pending_confirmation_and_opponent_confirm(self):
+        coach2 = CustomUser.objects.create_user(
+            username="coach2_user", password="password123", role="coach", church=self.church
+        )
+        self.team2.captain = coach2
+        self.team2.save()
+
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='scheduled'
+        )
+
+        # Coach 1 reports score
+        self.client.login(username="coach_user", password="password123")
+        resp = self.client.post(reverse('record_game_score', args=[game.id]), {
+            'team1_score': 7,
+            'team2_score': 4,
+            'status': 'completed'
+        })
+        self.assertEqual(resp.status_code, 302)
+
+        game.refresh_from_db()
+        # Transitions to pending_confirmation, score_confirmed is False
+        self.assertEqual(game.status, 'pending_confirmation')
+        self.assertFalse(game.score_confirmed)
+        self.assertEqual(game.score_submitted_by, self.coach_user)
+
+        # Standings do NOT count unconfirmed score
+        standings = self.season.get_standings()
+        eagles_standing = next(s for s in standings if s['team'] == self.team1)
+        self.assertEqual(eagles_standing['wins'], 0)
+
+        # Coach 1 cannot confirm own score
+        self_confirm = self.client.post(reverse('confirm_game_score', args=[game.id]))
+        self.assertEqual(self_confirm.status_code, 302)
+        game.refresh_from_db()
+        self.assertFalse(game.score_confirmed)
+
+        # Opposing Coach 2 views dashboard: sees pending score card
+        self.client.login(username="coach2_user", password="password123")
+        home_resp = self.client.get(reverse('home'))
+        self.assertContains(home_resp, "Scores Awaiting Your Confirmation")
+        self.assertContains(home_resp, "✓ Confirm Score")
+
+        # Coach 2 1-taps confirmation
+        confirm_resp = self.client.post(reverse('confirm_game_score', args=[game.id]))
+        self.assertEqual(confirm_resp.status_code, 302)
+
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'completed')
+        self.assertTrue(game.score_confirmed)
+        self.assertEqual(game.score_confirmed_by, coach2)
+
+        # Standings now count the verified result
+        standings_after = self.season.get_standings()
+        eagles_after = next(s for s in standings_after if s['team'] == self.team1)
+        self.assertEqual(eagles_after['wins'], 1)
+
+
+    def test_coach_score_dispute_and_commissioner_resolution(self):
+        coach2 = CustomUser.objects.create_user(
+            username="coach2_user", password="password123", role="coach", church=self.church
+        )
+        self.team2.captain = coach2
+        self.team2.save()
+
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='scheduled'
+        )
+
+        # Coach 1 submits score 12 - 3
+        self.client.login(username="coach_user", password="password123")
+        self.client.post(reverse('record_game_score', args=[game.id]), {
+            'team1_score': 12,
+            'team2_score': 3,
+            'status': 'completed'
+        })
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'pending_confirmation')
+
+        # Coach 2 disputes the score
+        self.client.login(username="coach2_user", password="password123")
+        disp_resp = self.client.post(reverse('dispute_game_score', args=[game.id]), {
+            'dispute_notes': "Runs in 6th inning were not counted in opposing book. Correct score is 9-7.",
+            'team1_score': 9,
+            'team2_score': 7
+        })
+        self.assertEqual(disp_resp.status_code, 302)
+
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'disputed')
+        self.assertFalse(game.score_confirmed)
+        self.assertIn("Runs in 6th inning were not counted", game.score_dispute_notes)
+
+        # Commissioner command center shows disputed scores count
+        self.client.login(username="admin_user", password="password123")
+        commish_home = self.client.get(reverse('home'))
+        self.assertContains(commish_home, "Disputed Scores")
+
+        # Coach 2 cannot resolve the dispute (commissioner only)
+        self.client.login(username="coach2_user", password="password123")
+        unauth_resolve = self.client.post(reverse('resolve_score_dispute', args=[game.id]), {
+            'team1_score': 9, 'team2_score': 7, 'resolution_notes': "Coach self resolution"
+        })
+        self.assertEqual(unauth_resolve.status_code, 302)
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'disputed')
+
+        # Commissioner resolves the dispute
+        self.client.login(username="admin_user", password="password123")
+        resolve_resp = self.client.post(reverse('resolve_score_dispute', args=[game.id]), {
+            'team1_score': 10,
+            'team2_score': 7,
+            'resolution_notes': "Verified both scorebooks; 1 run ruled unearned in 6th."
+        })
+        self.assertEqual(resolve_resp.status_code, 302)
+
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'completed')
+        self.assertTrue(game.score_confirmed)
+        self.assertEqual(game.team1_score, 10)
+        self.assertEqual(game.team2_score, 7)
+        self.assertEqual(game.score_confirmed_by, self.admin_user)
+        self.assertIn("RESOLVED by", game.score_dispute_notes)
+
+
+    def test_least_privilege_score_confirmation(self):
+        unauth = CustomUser.objects.create_user(
+            username="unauth_fan", password="password123", role="player"
+        )
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='pending_confirmation',
+            team1_score=5, team2_score=2, score_submitted_by=self.coach_user
+        )
+
+        self.client.login(username="unauth_fan", password="password123")
+        # Unaffiliated player cannot confirm or dispute
+        c_resp = self.client.post(reverse('confirm_game_score', args=[game.id]))
+        self.assertEqual(c_resp.status_code, 302)
+        game.refresh_from_db()
+        self.assertFalse(game.score_confirmed)
+
+        d_resp = self.client.post(reverse('dispute_game_score', args=[game.id]), {'dispute_notes': 'Spam'})
+        self.assertEqual(d_resp.status_code, 302)
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'pending_confirmation')

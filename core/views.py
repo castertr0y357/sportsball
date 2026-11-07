@@ -127,6 +127,7 @@ def home(request):
     # 6. Officials & Referees Assignments
     my_officiating_assignments = []
     open_sub_assignments = []
+    pending_score_confirmations = []
     executive_stats = None
 
     if request.user.is_authenticated:
@@ -146,16 +147,33 @@ def home(request):
                 game__date__gte=now
             ).select_related('game__team1', 'game__team2', 'game__season__league', 'official').order_by('game__date')[:6]
 
+        # Opponent score confirmation queue
+        if request.user.is_overall_commissioner:
+            pending_score_confirmations = Game.objects.filter(
+                status='pending_confirmation'
+            ).select_related('team1', 'team2', 'season__league', 'score_submitted_by').order_by('-date')[:5]
+        else:
+            pending_score_confirmations = Game.objects.filter(
+                status='pending_confirmation'
+            ).filter(
+                Q(team1__in=user_teams) | Q(team2__in=user_teams) |
+                Q(team1__in=captained_teams) | Q(team2__in=captained_teams)
+            ).exclude(
+                score_submitted_by=request.user
+            ).select_related('team1', 'team2', 'season__league', 'score_submitted_by').order_by('-date')[:5]
+
         if request.user.is_overall_commissioner:
             unpaid_teams_count = Team.objects.filter(dues_paid=False, season__current=True).count()
             rainouts_today = Game.objects.filter(date__date=today, status__in=['rainout', 'postponed']).count()
             pending_waivers_count = CustomUser.objects.filter(waiver_signed=False).count()
+            disputed_scores_count = Game.objects.filter(status='disputed').count()
             executive_stats = {
                 'churches_count': churches_count,
                 'active_seasons_count': active_seasons.count(),
                 'unpaid_teams_count': unpaid_teams_count,
                 'rainouts_today': rainouts_today,
                 'pending_waivers_count': pending_waivers_count,
+                'disputed_scores_count': disputed_scores_count,
             }
 
     return render(request, 'core/home.html', {
@@ -179,6 +197,7 @@ def home(request):
         'see_all_schedule_url': see_all_schedule_url,
         'my_officiating_assignments': my_officiating_assignments,
         'open_sub_assignments': open_sub_assignments,
+        'pending_score_confirmations': pending_score_confirmations,
         'executive_stats': executive_stats,
     })
 

@@ -45,4 +45,9 @@ urlpatterns = [
     path('officials/assignments/<int:assignment_id>/respond/', views.respond_official_assignment, name='respond_official_assignment'),
     path('officials/assignments/<int:assignment_id>/claim/', views.claim_official_assignment, name='claim_official_assignment'),
     path('teams/<int:team_id>/toggle-dues/', views.toggle_team_dues, name='toggle_team_dues'),
+    # Active Scorer Lock & Score Confirmation / Dispute Resolution
+    path('games/<int:game_id>/console/takeover/', views.take_over_dugout_scoring, name='take_over_dugout_scoring'),
+    path('games/<int:game_id>/score/confirm/', views.confirm_game_score, name='confirm_game_score'),
+    path('games/<int:game_id>/score/dispute/', views.dispute_game_score, name='dispute_game_score'),
+    path('games/<int:game_id>/score/resolve/', views.resolve_score_dispute, name='resolve_score_dispute'),
 ]

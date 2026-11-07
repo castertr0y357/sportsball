@@ -3,6 +3,7 @@ from datetime import timedelta
 import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
@@ -683,6 +684,28 @@ def game_detail(request, game_id):
     team1_rsvp_summary = game.get_team_rsvp_summary(game.team1)
     team2_rsvp_summary = game.get_team_rsvp_summary(game.team2)
 
+    # Score confirmation & dispute authority flags
+    is_commish = user.is_authenticated and (
+        user.is_overall_commissioner or (game.season and game.season.league and user.can_manage_league(game.season.league))
+    )
+    assigned_official_ids = game.get_assigned_official_user_ids()
+    is_assigned_official = user.is_authenticated and (user.id in assigned_official_ids)
+    official_score_locked = (
+        game.score_confirmed and
+        game.score_submitted_by_id in assigned_official_ids and
+        not (is_commish or is_assigned_official)
+    )
+
+    can_confirm_score = False
+    can_dispute_score = False
+    if user.is_authenticated and can_score and game.status == 'pending_confirmation':
+        if is_commish:
+            can_confirm_score = True
+            can_dispute_score = True
+        elif user != game.score_submitted_by:
+            can_confirm_score = True
+            can_dispute_score = True
+
     return render(request, 'leagues/game_detail.html', {
         'game': game,
         'player_stats': player_stats,
@@ -697,6 +720,10 @@ def game_detail(request, game_id):
         'can_manage_team2_lineup': can_manage_team2_lineup,
         'team1_rsvp_summary': team1_rsvp_summary,
         'team2_rsvp_summary': team2_rsvp_summary,
+        'can_confirm_score': can_confirm_score,
+        'can_dispute_score': can_dispute_score,
+        'is_commissioner': is_commish,
+        'official_score_locked': official_score_locked,
     })
 
 
@@ -707,14 +734,43 @@ def record_game_score(request, game_id):
         messages.error(request, "You do not have permission to record game scores for this match.")
         return redirect('game_detail', game_id=game.id)
 
+    # Authority check: If game has an assigned official and official already finalized score, coaches cannot overwrite
+    assigned_official_ids = game.get_assigned_official_user_ids()
+    is_assigned_official = request.user.id in assigned_official_ids
+    is_commish = request.user.is_overall_commissioner or (game.season and game.season.league and request.user.can_manage_league(game.season.league))
+
+    if game.score_confirmed and game.score_submitted_by_id in assigned_official_ids and not (is_assigned_official or is_commish):
+        messages.error(request, "This game was finalized by the official referee. To request a correction, please contact your league commissioner.")
+        return redirect('game_detail', game_id=game.id)
+
     if request.method == 'POST':
         form = GameScoreForm(request.POST, instance=game)
         if form.is_valid():
-            updated_game = form.save()
-            messages.success(
-                request,
-                f"Updated score: {updated_game.team1.name} {updated_game.team1_score} - {updated_game.team2_score} {updated_game.team2.name} ({updated_game.get_status_display()})"
-            )
+            new_status = form.cleaned_data.get('status')
+            t1_score = form.cleaned_data.get('team1_score', 0)
+            t2_score = form.cleaned_data.get('team2_score', 0)
+
+            if new_status == 'completed':
+                game.submit_score(request.user, t1_score, t2_score)
+                game.notes = form.cleaned_data.get('notes', game.notes)
+                game.save()
+
+                if game.status == 'completed':
+                    messages.success(
+                        request,
+                        f"✓ Official score verified: {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name}."
+                    )
+                else:
+                    messages.info(
+                        request,
+                        f"Reported score: {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name}. Sent to opposing coach for 1-tap confirmation."
+                    )
+            else:
+                updated_game = form.save()
+                messages.success(
+                    request,
+                    f"Updated game: {updated_game.team1.name} vs {updated_game.team2.name} ({updated_game.get_status_display()})"
+                )
     return redirect('game_detail', game_id=game.id)
 
 
@@ -809,6 +865,11 @@ def _serialize_game_state(game: Game):
         'team2_score': game.team2_score,
         'team1_hits': game.team1_hits,
         'team2_hits': game.team2_hits,
+        'active_scorer_id': game.active_scorer_id,
+        'active_scorer_name': game.active_scorer.display_name if game.active_scorer else None,
+        'active_scorer_expires_at': game.active_scorer_expires_at.isoformat() if game.active_scorer_expires_at else None,
+        'score_confirmed': game.score_confirmed,
+        'has_assigned_official': game.has_assigned_official,
         'current_inning': game.current_inning,
         'inning_half': game.inning_half,
         'inning_half_display': 'Top' if game.inning_half == 'top' else 'Bottom',
@@ -855,7 +916,7 @@ def _increment_player_stat(player, game, team, category, delta=1):
 def dugout_console(request, game_id):
     """Single-Operator Live Dugout Console with 1-tap scoreboard, lineup check-in & auto walk-up music."""
     game = get_object_or_404(
-        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter', 'active_scorer'),
         id=game_id
     )
     if not request.user.can_score_game(game):
@@ -867,10 +928,19 @@ def dugout_console(request, game_id):
         game.advance_to_next_batter()
         game.save(update_fields=['current_batter', 'team1_batter_index', 'team2_batter_index'])
 
+    is_locked = game.is_scorer_locked(request.user)
+    if not is_locked:
+        # Acquire or renew lock
+        game.acquire_scorer_lock(request.user)
+        game.save(update_fields=['active_scorer', 'active_scorer_expires_at'])
+
     state = _serialize_game_state(game)
+    state['is_locked'] = is_locked
     return render(request, 'leagues/dugout_console.html', {
         'game': game,
         'initial_state_json': json.dumps(state),
+        'is_locked': is_locked,
+        'active_scorer': game.active_scorer,
     })
 
 
@@ -881,7 +951,7 @@ def dugout_action(request, game_id):
         return JsonResponse({'error': 'POST required'}, status=405)
 
     game = get_object_or_404(
-        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter', 'active_scorer'),
         id=game_id
     )
     if not request.user.can_score_game(game):
@@ -893,11 +963,40 @@ def dugout_action(request, game_id):
         payload = request.POST
 
     action = payload.get('action', '')
-    trigger_walkup = _apply_dugout_action_internal(game, action, payload)
+
+    # Allow takeover action regardless of current lock
+    if action == 'take_over_scoring':
+        game.acquire_scorer_lock(request.user)
+        game.log_score_event(request.user, 'scorer_takeover', f"Scorekeeping taken over by {request.user.display_name}")
+        game.save(update_fields=['active_scorer', 'active_scorer_expires_at', 'score_audit_log'])
+        state = _serialize_game_state(game)
+        state['is_locked'] = False
+        return JsonResponse(state)
+
+    # Check lock for regular actions
+    if game.is_scorer_locked(request.user):
+        scorer_name = game.active_scorer.display_name if game.active_scorer else "another scorekeeper"
+        return JsonResponse({
+            'error': f"Game scoring is currently active by {scorer_name}. You are in view-only mode.",
+            'locked': True,
+            'active_scorer': scorer_name,
+            'active_scorer_id': game.active_scorer_id,
+        }, status=423)
+
+    # Refresh lock on valid action
+    game.acquire_scorer_lock(request.user)
+
+    if action == 'mark_final':
+        game.submit_score(request.user)
+        game.log_play(f"FINAL SCORE: {game.team1.name} {game.team1_score}, {game.team2.name} {game.team2_score}")
+        trigger_walkup = False
+    else:
+        trigger_walkup = _apply_dugout_action_internal(game, action, payload)
 
     game.save()
     state = _serialize_game_state(game)
     state['trigger_walkup'] = trigger_walkup
+    state['is_locked'] = False
     return JsonResponse(state)
 
 
@@ -1925,3 +2024,122 @@ def toggle_team_dues(request, team_id):
     status_str = "Paid ($" + str(team.season.registration_fee) + ")" if team.dues_paid else "Unpaid"
     messages.success(request, f"Updated dues for '{team.name}': {status_str}")
     return redirect('season_detail', season_id=team.season_id)
+
+
+@login_required
+def take_over_dugout_scoring(request, game_id):
+    """Allows an authorized coach, referee, or commissioner to take over scoring lock."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'active_scorer'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "Permission denied: you cannot score this match.")
+        return redirect('gamecast', game_id=game.id)
+
+    game.acquire_scorer_lock(request.user)
+    game.log_score_event(request.user, 'scorer_takeover', f"Scorekeeping control taken over by {request.user.display_name}")
+    game.save(update_fields=['active_scorer', 'active_scorer_expires_at', 'score_audit_log'])
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.content_type == 'application/json':
+        return JsonResponse({'status': 'ok', 'active_scorer': request.user.display_name, 'is_locked': False})
+
+    messages.success(request, "Scorekeeping lock acquired. You are now the active scorer for this game.")
+    return redirect('dugout_console', game_id=game.id)
+
+
+@login_required
+@require_POST
+def confirm_game_score(request, game_id):
+    """1-Tap score confirmation by the opposing coach, referee, or commissioner."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'score_submitted_by'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "Permission denied: you cannot verify scores for this match.")
+        return redirect('game_detail', game_id=game.id)
+
+    is_commish = request.user.is_overall_commissioner or (game.season and game.season.league and request.user.can_manage_league(game.season.league))
+    assigned_official_ids = game.get_assigned_official_user_ids()
+    is_assigned_official = request.user.id in assigned_official_ids
+
+    # The user submitting the score cannot confirm their own score unless they are commissioner or assigned official
+    if game.score_submitted_by == request.user and not (is_commish or is_assigned_official):
+        messages.error(request, "Self-confirmation is not permitted. The opposing coach or an assigned official must verify the score.")
+        return redirect('game_detail', game_id=game.id)
+
+    if game.status not in ['pending_confirmation', 'disputed']:
+        messages.info(request, f"Game score is already marked as {game.get_status_display()}.")
+        return redirect('game_detail', game_id=game.id)
+
+    game.confirm_score(request.user)
+    messages.success(
+        request,
+        f"✓ Score confirmed! {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name} is now official and recorded in standings."
+    )
+    return redirect('game_detail', game_id=game.id)
+
+
+@login_required
+@require_POST
+def dispute_game_score(request, game_id):
+    """Opposing coach or team representative flags score discrepancy for commissioner review."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'score_submitted_by'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "Permission denied: you cannot dispute scores for this match.")
+        return redirect('game_detail', game_id=game.id)
+
+    # Assigned official score lock check
+    assigned_official_ids = game.get_assigned_official_user_ids()
+    is_commish = request.user.is_overall_commissioner or (game.season and game.season.league and request.user.can_manage_league(game.season.league))
+    if game.score_confirmed and game.score_submitted_by_id in assigned_official_ids and not is_commish:
+        messages.error(request, "This game was finalized by an official referee. Please contact your league commissioner directly to submit an appeal.")
+        return redirect('game_detail', game_id=game.id)
+
+    notes = request.POST.get('dispute_notes', '').strip()
+    team1_score_str = request.POST.get('team1_score')
+    team2_score_str = request.POST.get('team2_score')
+
+    t1 = int(team1_score_str) if (team1_score_str and team1_score_str.isdigit()) else None
+    t2 = int(team2_score_str) if (team2_score_str and team2_score_str.isdigit()) else None
+
+    if not notes:
+        notes = "Opposing coach contested the submitted score."
+
+    game.dispute_score(request.user, notes=notes, opposing_t1_score=t1, opposing_t2_score=t2)
+    messages.warning(
+        request,
+        "⚠️ Score marked as Disputed. The league commissioner has been notified to review and issue an official ruling."
+    )
+    return redirect('game_detail', game_id=game.id)
+
+
+@login_required
+@require_POST
+def resolve_score_dispute(request, game_id):
+    """Commissioner-exclusive ruling resolving a disputed score."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church'), id=game_id)
+    is_commish = request.user.is_overall_commissioner or (game.season and game.season.league and request.user.can_manage_league(game.season.league))
+    if not is_commish:
+        messages.error(request, "Permission denied: Only League Commissioners can resolve score disputes.")
+        return redirect('game_detail', game_id=game.id)
+
+    try:
+        t1_score = int(request.POST.get('team1_score', game.team1_score))
+        t2_score = int(request.POST.get('team2_score', game.team2_score))
+    except (ValueError, TypeError):
+        messages.error(request, "Invalid score values provided.")
+        return redirect('game_detail', game_id=game.id)
+
+    notes = request.POST.get('resolution_notes', '').strip()
+    game.team1_score = t1_score
+    game.team2_score = t2_score
+    game.status = 'completed'
+    game.score_confirmed = True
+    game.score_confirmed_by = request.user
+    if notes:
+        existing = f"{game.score_dispute_notes}\n" if game.score_dispute_notes else ""
+        game.score_dispute_notes = f"{existing}[RESOLVED by {request.user.display_name}]: {notes}".strip()
+    game.log_score_event(request.user, 'dispute_resolved', f"Commissioner resolved score to {t1_score}-{t2_score}. Notes: {notes or 'No notes'}")
+    game.save(update_fields=['team1_score', 'team2_score', 'status', 'score_confirmed', 'score_confirmed_by', 'score_dispute_notes', 'score_audit_log'])
+
+    messages.success(
+        request,
+        f"✓ Dispute resolved! Official final score set to {game.team1.name} {t1_score} - {t2_score} {game.team2.name}."
+    )
+    return redirect('game_detail', game_id=game.id)

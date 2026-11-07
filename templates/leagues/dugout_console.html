@@ -138,6 +138,25 @@
     </div>
 </div>
 
+<!-- Active Scorer Lock & Spectator Banner -->
+<div id="scorer-lock-banner" style="display:{% if is_locked %}flex{% else %}none{% endif %}; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; background:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; padding:0.85rem 1.15rem; border-radius:6px; color:#92400e;">
+    <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span style="font-size:1.35rem;">⚠️</span>
+        <div>
+            <strong style="color:#b45309;">Live Scoring Lock Active:</strong>
+            <span id="active-scorer-msg">
+                Scores and plays are currently being recorded by <strong>{{ active_scorer.display_name|default:"another scorekeeper" }}</strong>. You are in view-only spectator mode.
+            </span>
+        </div>
+    </div>
+    <form method="POST" action="{% url 'take_over_dugout_scoring' game.id %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-accent" style="background:#d97706; border-color:#b45309; color:#fff; font-weight:700; padding:0.4rem 0.85rem;" onclick="return confirm('Take over scorekeeping for this game? Other scorekeepers will be placed in spectator mode.');">
+            ✋ Take Over Scoring
+        </button>
+    </form>
+</div>
+
 <!-- Offline Resilience & Sync Status Bar -->
 <div class="offline-status-bar" id="status-bar">
     <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -787,6 +806,18 @@ async function sendAction(action, extra = {}) {
             const data = await res.json();
             renderState(data);
             flushOfflineQueue();
+        } else if (res.status === 423) {
+            const errData = await res.json();
+            alert(errData.error || "Scoring is currently locked by another scorekeeper.");
+            const banner = document.getElementById('scorer-lock-banner');
+            if (banner) {
+                banner.style.display = 'flex';
+                const msg = document.getElementById('active-scorer-msg');
+                if (msg && errData.active_scorer) {
+                    msg.innerHTML = `Scores and plays are currently being recorded by <strong>${errData.active_scorer}</strong>. You are in view-only spectator mode.`;
+                }
+            }
+            return;
         } else {
             throw new Error('Server returned error status');
         }

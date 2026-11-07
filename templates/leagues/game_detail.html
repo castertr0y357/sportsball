@@ -37,6 +37,27 @@ function submitGameRsvp(responseVal) {
     });
 }
 </script>
+
+{% if game.score_audit_log %}
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface); border:1px solid var(--border);">
+    <details>
+        <summary style="font-weight:700; cursor:pointer; color:var(--text-muted); font-size:0.92rem;">
+            📜 Score History &amp; Audit Trail ({{ game.score_audit_log|length }} events)
+        </summary>
+        <div style="margin-top:0.75rem;">
+            <ul style="font-family:monospace; font-size:0.82rem; padding-left:1.25rem; color:var(--text);">
+                {% for entry in game.score_audit_log %}
+                    <li style="margin-bottom:0.35rem;">
+                        <span style="color:#64748b;">[{{ entry.timestamp|slice:":19" }}]</span>
+                        <strong>{{ entry.user_name }}:</strong> {{ entry.details }}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </details>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block content %}
@@ -47,6 +68,17 @@ function submitGameRsvp(responseVal) {
         <p style="margin:0; color:var(--text-muted);">
             {{ game.date|date:"l, M d, Y g:i A" }} &bull; {{ game.location }} &bull;
             Status: <strong>{{ game.get_status_display }}</strong>
+            {% if game.status == 'completed' %}
+                {% if game.score_confirmed and official_score_locked %}
+                    <span class="badge badge-success" style="font-size:0.8rem; margin-left:0.35rem;">⚖️ Official Referee Verified</span>
+                {% elif game.score_confirmed %}
+                    <span class="badge badge-success" style="font-size:0.8rem; margin-left:0.35rem;">✓ Confirmed Final Score</span>
+                {% endif %}
+            {% elif game.status == 'pending_confirmation' %}
+                <span class="badge badge-warning" style="font-size:0.8rem; margin-left:0.35rem;">⚠️ Pending Opponent Confirmation</span>
+            {% elif game.status == 'disputed' %}
+                <span class="badge" style="background:#dc2626; color:#fff; font-size:0.8rem; margin-left:0.35rem;">⚠️ Disputed Score</span>
+            {% endif %}
         </p>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
@@ -96,6 +128,111 @@ function submitGameRsvp(responseVal) {
             </span>
         </div>
     </div>
+</div>
+{% endif %}
+
+<!-- Score Confirmation & Dispute Handling Widget -->
+{% if game.status == 'pending_confirmation' %}
+<div class="card" style="margin-bottom:1.5rem; background:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; padding:1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.75rem;">
+        <div>
+            <h3 style="margin:0; color:#92400e; font-size:1.1rem; display:flex; align-items:center; gap:0.4rem;">
+                <span>⚠️</span> Game Score Pending Opponent Confirmation
+            </h3>
+            <p style="margin:0.25rem 0 0; color:#78350f; font-size:0.9rem;">
+                Reported Score: <strong>{{ game.team1.name }} {{ game.team1_score }} - {{ game.team2_score }} {{ game.team2.name }}</strong>
+                {% if game.score_submitted_by %}
+                    by <em>{{ game.score_submitted_by.display_name }}</em> on {{ game.score_submitted_at|date:"M j, g:i A" }}
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if can_confirm_score %}
+        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
+            <form method="POST" action="{% url 'confirm_game_score' game.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success" style="font-weight:700;">
+                    ✓ Confirm Final Score
+                </button>
+            </form>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('dispute-form-wrap').style.display = document.getElementById('dispute-form-wrap').style.display === 'none' ? 'block' : 'none';">
+                ⚠️ Disagree / Dispute Score
+            </button>
+        </div>
+
+        <div id="dispute-form-wrap" style="display:none; margin-top:1rem; background:#fff; border:1px solid #fde68a; border-radius:6px; padding:1rem;">
+            <h4 style="margin-top:0; color:#92400e;">Flag Score Discrepancy</h4>
+            <p style="font-size:0.85rem; color:#78350f; margin-bottom:0.75rem;">
+                If the score entered differs from your team's scorebook, enter your reported score and notes. The League Commissioner will review and resolve.
+            </p>
+            <form method="POST" action="{% url 'dispute_game_score' game.id %}">
+                {% csrf_token %}
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:700;">{{ game.team1.name }} Score:</label>
+                        <input type="number" name="team1_score" value="{{ game.team1_score }}" min="0" class="input">
+                    </div>
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:700;">{{ game.team2.name }} Score:</label>
+                        <input type="number" name="team2_score" value="{{ game.team2_score }}" min="0" class="input">
+                    </div>
+                </div>
+                <div style="margin-bottom:0.75rem;">
+                    <label style="font-size:0.82rem; font-weight:700;">Reason / Scorebook Notes:</label>
+                    <textarea name="dispute_notes" rows="2" class="input" placeholder="Explain discrepancy (e.g. 5th inning runs not counted, final score was 8-6)"></textarea>
+                </div>
+                <button type="submit" class="btn" style="background:#dc2626; color:#fff; border-color:#b91c1c;">Submit Dispute to Commissioner</button>
+            </form>
+        </div>
+    {% elif user == game.score_submitted_by %}
+        <p style="font-size:0.85rem; color:#78350f; margin-top:0.5rem;">
+            <em>Waiting for the opposing team's coach or an assigned official to confirm this score.</em>
+        </p>
+    {% endif %}
+</div>
+{% elif game.status == 'disputed' %}
+<div class="card" style="margin-bottom:1.5rem; background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; padding:1.25rem;">
+    <h3 style="margin-top:0; color:#991b1b; font-size:1.1rem; display:flex; align-items:center; gap:0.4rem;">
+        <span>⚠️</span> Disputed Game Score Under Review
+    </h3>
+    <p style="color:#b91c1c; font-size:0.9rem; margin-bottom:0.5rem;">
+        Contested Score: <strong>{{ game.team1.name }} {{ game.team1_score }} - {{ game.team2_score }} {{ game.team2.name }}</strong>
+    </p>
+    {% if game.score_dispute_notes %}
+        <div style="background:#fff; border:1px solid #fecaca; border-radius:4px; padding:0.65rem 0.85rem; font-size:0.85rem; color:#7f1d1d; margin-bottom:0.75rem; white-space:pre-wrap;">{{ game.score_dispute_notes }}</div>
+    {% endif %}
+
+    {% if is_commissioner %}
+        <div style="margin-top:1rem; background:#fff; border:1px solid #fecaca; border-radius:6px; padding:1rem;">
+            <h4 style="margin-top:0; color:#991b1b;">👑 Commissioner Dispute Ruling</h4>
+            <p style="font-size:0.85rem; color:#64748b; margin-bottom:0.75rem;">
+                As League Commissioner, enter the authoritative final score to resolve this dispute and update standings.
+            </p>
+            <form method="POST" action="{% url 'resolve_score_dispute' game.id %}">
+                {% csrf_token %}
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:700;">Final {{ game.team1.name }} Score:</label>
+                        <input type="number" name="team1_score" value="{{ game.team1_score }}" min="0" required class="input">
+                    </div>
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:700;">Final {{ game.team2.name }} Score:</label>
+                        <input type="number" name="team2_score" value="{{ game.team2_score }}" min="0" required class="input">
+                    </div>
+                </div>
+                <div style="margin-bottom:0.75rem;">
+                    <label style="font-size:0.82rem; font-weight:700;">Ruling Justification / Notes:</label>
+                    <textarea name="resolution_notes" rows="2" class="input" placeholder="Explain official decision (e.g. Verified with home scorebook, corrected run in 4th)"></textarea>
+                </div>
+                <button type="submit" class="btn btn-success" style="font-weight:700;">Finalize Official Score</button>
+            </form>
+        </div>
+    {% else %}
+        <p style="font-size:0.85rem; color:#7f1d1d; margin:0;">
+            <em>The league commissioner has been notified and will enter the official ruling.</em>
+        </p>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -172,11 +309,17 @@ function shareGameLink() {
 <div class="grid grid-2">
     <div class="card">
         <h2>Record / Update Game Score</h2>
-        <form method="post" action="{% url 'record_game_score' game.id %}">
-            {% csrf_token %}
-            {{ score_form.as_p }}
-            <button type="submit" class="btn">Save Score &amp; Status</button>
-        </form>
+        {% if official_score_locked %}
+            <div class="alert alert-info" style="margin-bottom:1rem; font-size:0.88rem;">
+                🔒 <strong>Official Referee Score Locked:</strong> This game was finalized by an official referee. To ensure competitive integrity, coaches cannot modify the score. Contact your league commissioner if you believe an error occurred.
+            </div>
+        {% else %}
+            <form method="post" action="{% url 'record_game_score' game.id %}">
+                {% csrf_token %}
+                {{ score_form.as_p }}
+                <button type="submit" class="btn">Save Score &amp; Status</button>
+            </form>
+        {% endif %}
     </div>
 
     <div class="card">

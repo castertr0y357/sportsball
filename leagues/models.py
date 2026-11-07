@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 class League(models.Model):
@@ -371,7 +372,9 @@ class Game(models.Model):
     STATUS_CHOICES = [
         ('scheduled', 'Scheduled'),
         ('in_progress', 'In Progress'),
+        ('pending_confirmation', 'Pending Opponent Confirmation'),
         ('completed', 'Completed / Final'),
+        ('disputed', 'Disputed Score'),
         ('postponed', 'Postponed / Rainout'),
         ('cancelled', 'Cancelled'),
     ]
@@ -430,6 +433,39 @@ class Game(models.Model):
     clock_seconds_remaining = models.IntegerField(default=1200)
     clock_running = models.BooleanField(default=False)
     clock_last_started_at = models.DateTimeField(null=True, blank=True)
+
+    # Active Scorer Lock (Prevents simultaneous double-scoring in Dugout Console)
+    active_scorer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='active_scoring_games',
+        help_text="User actively recording plays for this game in the Dugout Console"
+    )
+    active_scorer_expires_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when active scoring lock expires")
+
+    # Score Confirmation, Peer Verification & Audit Trail
+    score_submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='submitted_game_scores',
+        help_text="User who submitted final score"
+    )
+    score_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='confirmed_game_scores',
+        help_text="User who confirmed final score"
+    )
+    score_submitted_at = models.DateTimeField(null=True, blank=True)
+    score_confirmed = models.BooleanField(default=False, help_text="Has score been confirmed or certified by official?")
+    score_dispute_notes = models.TextField(blank=True, help_text="Notes from coach or commissioner if score was disputed")
+    score_audit_log = models.JSONField(default=list, blank=True, help_text="Audit log of score changes, submissions, and confirmations")
 
     class Meta:
         ordering = ['date', 'id']
@@ -530,6 +566,127 @@ class Game(models.Model):
             'pending': pending_count,
             'total': total_roster,
         }
+
+    @property
+    def has_assigned_official(self):
+        return self.official_assignments.filter(status__in=['assigned', 'confirmed']).exists()
+
+    def get_assigned_official_user_ids(self):
+        return set(self.official_assignments.filter(status__in=['assigned', 'confirmed']).values_list('official_id', flat=True))
+
+    def is_scorer_locked(self, user):
+        """
+        Returns True if another user currently holds an active, unexpired lock.
+        Commissioners and assigned officials can override regular coach locks.
+        """
+        if not user or not user.is_authenticated:
+            return True
+        if not self.active_scorer_id or not self.active_scorer_expires_at:
+            return False
+        if self.active_scorer_expires_at <= timezone.now():
+            return False
+        if self.active_scorer_id == user.id:
+            return False
+
+        # Overall commissioner or league admin can override
+        if user.is_overall_commissioner or (self.season and self.season.league and user.can_manage_league(self.season.league)):
+            return False
+
+        # If user is a certified referee or assigned official and active_scorer is not an official, official can override
+        assigned_ids = self.get_assigned_official_user_ids()
+        is_user_official = (user.id in assigned_ids) or (user.role == 'referee')
+        is_active_official = (
+            (self.active_scorer_id in assigned_ids) or
+            (self.active_scorer and self.active_scorer.role == 'referee') or
+            (self.active_scorer and self.active_scorer.is_overall_commissioner)
+        )
+        if is_user_official and not is_active_official:
+            return False
+
+        return True
+
+    def acquire_scorer_lock(self, user):
+        """Grants scoring lock to user for 2 minutes from now."""
+        self.active_scorer = user
+        self.active_scorer_expires_at = timezone.now() + timezone.timedelta(minutes=2)
+
+    def log_score_event(self, user, action: str, details: str):
+        entry = {
+            'timestamp': timezone.now().isoformat(),
+            'user_id': user.id if user and user.is_authenticated else None,
+            'user_name': user.display_name if user and user.is_authenticated else 'System',
+            'role': user.get_role_display() if user and user.is_authenticated else 'System',
+            'action': action,
+            'details': details,
+            'team1_score': self.team1_score,
+            'team2_score': self.team2_score,
+            'status': self.status,
+        }
+        logs = list(self.score_audit_log or [])
+        logs.append(entry)
+        self.score_audit_log = logs
+
+    def submit_score(self, user, t1_score=None, t2_score=None):
+        """
+        Handles score submission:
+        - If user is certified referee, assigned official, or commissioner: immediately marks 'completed' & 'score_confirmed=True'.
+        - If user is coach without assigned official: marks 'pending_confirmation'.
+        """
+        if t1_score is not None:
+            self.team1_score = int(t1_score)
+        if t2_score is not None:
+            self.team2_score = int(t2_score)
+
+        now = timezone.now()
+        self.score_submitted_by = user
+        self.score_submitted_at = now
+
+        assigned_ids = self.get_assigned_official_user_ids()
+        is_official = (
+            user.id in assigned_ids
+            or user.role == 'referee'
+            or user.is_overall_commissioner
+            or (self.season and self.season.league and user.can_manage_league(self.season.league))
+        )
+
+        if is_official:
+            self.status = 'completed'
+            self.score_confirmed = True
+            self.score_confirmed_by = user
+            self.log_score_event(
+                user, 'official_finalized',
+                f"Official score verified by {user.display_name}: {self.team1.name} {self.team1_score} - {self.team2_score} {self.team2.name}"
+            )
+        else:
+            self.status = 'pending_confirmation'
+            self.score_confirmed = False
+            self.score_confirmed_by = None
+            self.log_score_event(
+                user, 'coach_submitted',
+                f"Reported by {user.display_name}: {self.team1.name} {self.team1_score} - {self.team2_score} {self.team2.name} (Awaiting opponent confirmation)"
+            )
+
+    def confirm_score(self, user):
+        """Opposing coach or commissioner confirms the pending score."""
+        self.status = 'completed'
+        self.score_confirmed = True
+        self.score_confirmed_by = user
+        self.log_score_event(
+            user, 'score_confirmed',
+            f"Score confirmed by {user.display_name}: {self.team1.name} {self.team1_score} - {self.team2_score} {self.team2.name}"
+        )
+        self.save(update_fields=['status', 'score_confirmed', 'score_confirmed_by', 'score_audit_log'])
+
+    def dispute_score(self, user, dispute_notes: str = None, opposing_t1_score=None, opposing_t2_score=None, notes: str = None):
+        """Opposing coach disputes the reported score."""
+        final_notes = dispute_notes or notes or "Opposing coach contested the submitted score."
+        self.status = 'disputed'
+        self.score_dispute_notes = final_notes
+        details = f"Disputed by {user.display_name}. Reason: {final_notes}"
+        if opposing_t1_score is not None and opposing_t2_score is not None:
+            details += f" (Claims score was {opposing_t1_score} - {opposing_t2_score})"
+        self.log_score_event(user, 'score_disputed', details)
+        self.save(update_fields=['status', 'score_dispute_notes', 'score_audit_log'])
 
     def get_player_rsvp(self, player):
         if not player or not player.is_authenticated:
