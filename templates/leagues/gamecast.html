@@ -76,7 +76,29 @@
             <a href="{% url 'dugout_console' game.id %}" class="btn btn-accent">Dugout Operator Console</a>
         {% endif %}
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary">Box Score</a>
+        <button type="button" class="btn btn-secondary" onclick="shareGameCast()" title="Share live GameCast link with church family & friends">
+            📢 Share GameCast
+        </button>
     </div>
+
+<script>
+function shareGameCast() {
+    const shareData = {
+        title: 'Live GameCast: {{ game.team2.name }} vs {{ game.team1.name }}',
+        text: 'Follow live action for {{ game.team2.name }} vs {{ game.team1.name }} on SportsBall!',
+        url: window.location.href
+    };
+    if (navigator.share) {
+        navigator.share(shareData).catch(() => {});
+    } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+            alert('✓ Copied live GameCast link to clipboard!');
+        });
+    } else {
+        prompt('Copy GameCast link:', window.location.href);
+    }
+}
+</script>
 </div>
 
 <div class="gamecast-board">

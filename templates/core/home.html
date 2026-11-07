@@ -20,6 +20,147 @@
 <!-- =========================================================================
      AUTHENTICATED MEMBER DASHBOARD
      ========================================================================= -->
+
+<!-- Tier 6 Friction Removal: Player Waiver Alert -->
+{% if not user.waiver_signed %}
+<div class="alert alert-warning" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem; background:#fffbeb; border-left:4px solid #f59e0b; padding:1rem 1.25rem; border-radius:6px;">
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+        <span style="font-size:1.6rem;">⚠️</span>
+        <div>
+            <strong style="color:#b45309; font-size:1.02rem;">Liability Waiver &amp; Sportsmanship Covenant Required</strong>
+            <p style="margin:0.15rem 0 0; font-size:0.88rem; color:#92400e;">
+                You have not signed your annual league waiver. You must complete your covenant before competing in official games.
+            </p>
+        </div>
+    </div>
+    <a href="{% url 'sign_waiver' %}" class="btn btn-sm btn-accent" style="font-weight:700;">✍️ Sign Waiver Now</a>
+</div>
+{% endif %}
+
+<!-- Tier 1 Friction Removal: Overall Commissioner Executive Health Command Center -->
+{% if executive_stats %}
+<div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border:1px solid #334155;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.5rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:1.1rem;">👑</span>
+            <strong style="font-size:1.05rem; letter-spacing:0.02em;">Overall Commissioner Command Center</strong>
+        </div>
+        <span class="badge" style="background:#3b82f6; color:#fff; font-size:0.75rem;">Network Health</span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
+        <div style="background:rgba(255,255,255,0.06); padding:0.6rem 0.8rem; border-radius:6px;">
+            <div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase;">Partner Churches</div>
+            <div style="font-size:1.3rem; font-weight:800; color:#fff;">{{ executive_stats.churches_count }}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06); padding:0.6rem 0.8rem; border-radius:6px;">
+            <div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase;">Active Seasons</div>
+            <div style="font-size:1.3rem; font-weight:800; color:#38bdf8;">{{ executive_stats.active_seasons_count }}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06); padding:0.6rem 0.8rem; border-radius:6px;">
+            <div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase;">Unpaid Teams</div>
+            <div style="font-size:1.3rem; font-weight:800; color:{% if executive_stats.unpaid_teams_count > 0 %}#f87171{% else %}#4ade80{% endif %};">
+                {{ executive_stats.unpaid_teams_count }}
+            </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06); padding:0.6rem 0.8rem; border-radius:6px;">
+            <div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase;">Weather / Rainouts</div>
+            <div style="font-size:1.3rem; font-weight:800; color:{% if executive_stats.rainouts_today > 0 %}#fbbf24{% else %}#94a3b8{% endif %};">
+                {{ executive_stats.rainouts_today }}
+            </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06); padding:0.6rem 0.8rem; border-radius:6px;">
+            <div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase;">Pending Waivers</div>
+            <div style="font-size:1.3rem; font-weight:800; color:{% if executive_stats.pending_waivers_count > 0 %}#fbbf24{% else %}#4ade80{% endif %};">
+                {{ executive_stats.pending_waivers_count }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Tier 5 Friction Removal: Referees & Officials Portal + Sub Board -->
+{% if my_officiating_assignments or open_sub_assignments %}
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; border-bottom:1px solid var(--border); padding-bottom:0.5rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:1.2rem;">⚖️</span>
+            <h3 style="margin:0; font-size:1.1rem;">My Officiating Assignments</h3>
+        </div>
+        <span class="badge badge-primary" style="font-size:0.75rem;">Officials Hub</span>
+    </div>
+
+    {% if my_officiating_assignments %}
+        <div style="display:grid; gap:0.75rem; margin-bottom:1rem;">
+            {% for a in my_officiating_assignments %}
+                <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:6px; padding:0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.2rem;">
+                            <span class="badge" style="background:#1e293b; color:#fff; font-size:0.75rem; font-weight:700;">{{ a.get_role_display }}</span>
+                            {% if a.status == 'confirmed' %}
+                                <span class="badge badge-success" style="font-size:0.72rem;">✓ Confirmed</span>
+                            {% elif a.status == 'declined' %}
+                                <span class="badge" style="background:#ef4444; color:#fff; font-size:0.72rem;">⚠️ Sub Requested</span>
+                            {% else %}
+                                <span class="badge badge-secondary" style="font-size:0.72rem;">Pending Confirmation</span>
+                            {% endif %}
+                            <span style="font-size:0.8rem; color:var(--text-muted);">Stipend: <strong>${{ a.pay_amount }}</strong></span>
+                        </div>
+                        <div style="font-weight:700; font-size:1rem;">
+                            {{ a.game.team1.name }} vs {{ a.game.team2.name }}
+                        </div>
+                        <div style="font-size:0.84rem; color:var(--text-muted);">
+                            {{ a.game.date|date:"D, M d @ g:i A" }} &bull; {{ a.game.location|default:"TBD Field" }} ({{ a.game.season.league.name }})
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:0.4rem; align-items:center;">
+                        {% if a.status != 'confirmed' %}
+                            <form method="post" action="{% url 'respond_official_assignment' a.id %}" style="display:inline; margin:0;">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="confirm">
+                                <button type="submit" class="btn btn-sm btn-accent" style="font-size:0.8rem;">✓ Confirm In</button>
+                            </form>
+                        {% endif %}
+                        {% if a.status != 'declined' %}
+                            <form method="post" action="{% url 'respond_official_assignment' a.id %}" style="display:inline; margin:0;" onsubmit="return confirm('Can't make it? This will post the game to the open substitute board for other officials to claim.');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="request_sub">
+                                <button type="submit" class="btn btn-sm" style="background:#fff1f2; border:1px solid #fda4af; color:#be123c; font-size:0.8rem;">Can't Make It / Sub</button>
+                            </form>
+                        {% endif %}
+                        <a href="{% url 'dugout_console' a.game.id %}" class="btn btn-sm btn-secondary" style="font-size:0.8rem;">⚾ Dugout Console</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted); font-size:0.88rem; margin:0 0 1rem;">You have no active officiating assignments for upcoming games.</p>
+    {% endif %}
+
+    <!-- Open Substitute Claim Board -->
+    {% if open_sub_assignments %}
+        <div style="border-top:1px dashed var(--border); padding-top:0.75rem; margin-top:0.5rem;">
+            <div style="font-size:0.85rem; font-weight:700; color:#b45309; display:flex; align-items:center; gap:0.35rem; margin-bottom:0.5rem;">
+                <span>📢 Open Substitute Board &mdash; Games Needing an Official</span>
+            </div>
+            <div style="display:grid; gap:0.5rem;">
+                {% for sub in open_sub_assignments %}
+                    <div style="background:#fffbeb; border:1px solid #fef3c7; border-radius:6px; padding:0.6rem 0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <div>
+                            <span style="font-weight:700; font-size:0.9rem;">{{ sub.game.team1.name }} vs {{ sub.game.team2.name }}</span>
+                            <span style="font-size:0.82rem; color:var(--text-muted);">({{ sub.get_role_display }}) &bull; {{ sub.game.date|date:"D, M d @ g:i A" }} &bull; Stipend: ${{ sub.pay_amount }}</span>
+                            {% if sub.notes %}<div style="font-size:0.76rem; color:#b45309; font-style:italic;">Reason: {{ sub.notes }}</div>{% endif %}
+                        </div>
+                        <form method="post" action="{% url 'claim_official_assignment' sub.id %}" style="margin:0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-accent" style="font-size:0.78rem;">✋ Claim Game</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endif %}
 <div class="page-header">
     <div>
         <h1 style="font-size:1.65rem; margin-bottom:0.25rem;">

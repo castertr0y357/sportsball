@@ -51,6 +51,7 @@ function submitGameRsvp(responseVal) {
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary">Live Public GameCast</a>
+        <button type="button" class="btn btn-secondary" onclick="shareGameLink()" title="Share game details link">📢 Share</button>
         {% if can_manage_team1_lineup %}
             <a href="{% url 'game_lineup_builder' game.id game.team1.id %}" class="btn btn-secondary">
                 &#128221; Set Lineup ({{ game.team1.name }})
@@ -97,6 +98,45 @@ function submitGameRsvp(responseVal) {
     </div>
 </div>
 {% endif %}
+
+<!-- Officiating Crew Card -->
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface); border:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+        <h3 style="margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.35rem;">
+            <span>⚖️ Assigned Officiating Crew</span>
+        </h3>
+        {% if user.is_authenticated and game.season %}
+            <a href="{% url 'officials_hub' game.season.id %}" style="font-size:0.8rem; color:var(--text-muted); text-decoration:none;">Officials Hub &rarr;</a>
+        {% endif %}
+    </div>
+    <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+        {% for a in game.official_assignments.all %}
+            <span class="badge" style="background:var(--surface-alt); border:1px solid var(--border); color:var(--text); padding:0.4rem 0.65rem; font-size:0.85rem;">
+                <strong>{{ a.get_role_display }}:</strong> {{ a.official.display_name }}
+                {% if a.status == 'confirmed' %}
+                    <span style="color:#059669; font-weight:700;">✓</span>
+                {% elif a.status == 'declined' %}
+                    <span style="color:#ef4444; font-weight:700;">[Needs Sub]</span>
+                {% endif %}
+            </span>
+        {% empty %}
+            <span style="color:var(--text-muted); font-size:0.88rem; font-style:italic;">No officials assigned to this game yet.</span>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function shareGameLink() {
+    const text = '{{ game.team1.name }} vs {{ game.team2.name }} &bull; {{ game.date|date:"D, M d @ g:i A" }}';
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+            alert('✓ Copied game link to clipboard!');
+        });
+    } else {
+        prompt('Copy game link:', window.location.href);
+    }
+}
+</script>
 
 <div class="card" style="margin-bottom:1.5rem;">
     <h2>Player Box Score &amp; Statistics</h2>

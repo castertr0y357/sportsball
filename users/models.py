@@ -36,6 +36,10 @@ class CustomUser(AbstractUser):
     preferred_position = models.CharField(max_length=50, blank=True, help_text="e.g. Shortstop, 1st Base, Setter")
     jersey_number = models.PositiveIntegerField(null=True, blank=True)
     bio = models.TextField(blank=True)
+    is_sub_available = models.BooleanField(
+        default=False,
+        help_text="Available as an emergency substitute player this week"
+    )
     is_free_agent = models.BooleanField(
         default=False,
         help_text="Looking for a team to join"
@@ -144,6 +148,8 @@ class CustomUser(AbstractUser):
         if game.season and game.season.league and self.can_manage_league(game.season.league):
             return True
         if self.role == 'referee':
+            return True
+        if hasattr(game, 'official_assignments') and game.official_assignments.filter(official_id=self.id, status__in=('assigned', 'confirmed')).exists():
             return True
         if (game.team1 and game.team1.captain_id == self.id) or (game.team2 and game.team2.captain_id == self.id):
             return True

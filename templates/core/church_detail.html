@@ -74,7 +74,7 @@ function copyChurchInviteUrl() {
 </div>
 {% endif %}
 
-{% if is_overall_commish %}
+{% if is_church_commish or is_overall_commish %}
 <!-- 1-Click Church Invite Onboarding Widget -->
 <div class="card" style="background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(245,158,11,0.08)); border:1px solid rgba(37,99,235,0.25); margin-bottom:1.5rem; padding:1.25rem 1.5rem;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
@@ -85,7 +85,7 @@ function copyChurchInviteUrl() {
                 <span class="badge badge-primary">Commissioner Tool</span>
             </div>
             <p style="margin:0; font-size:0.9rem; color:var(--text-muted);">
-                Share this link with the Pastor or Athletic Director for <strong>{{ church.name }}</strong>. When they sign up, their account will instantly be appointed Church Commissioner to register teams.
+                Share this invite link with congregation members, coaches, or church staff. When they register with this link, they will automatically be affiliated with <strong>{{ church.name }}</strong>.
             </p>
         </div>
         <div style="display:flex; align-items:center; gap:0.5rem; width:100%; max-width:480px;">
@@ -191,6 +191,64 @@ function copyChurchInviteUrl() {
             </p>
         {% endif %}
     </div>
+</div>
+
+<!-- Multi-Sport Congregation Game Schedule Feed -->
+<div class="card" style="margin-top:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <div>
+            <h2 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:0.4rem;">
+                <span>📅 Our Church Multi-Sport Game Schedule</span>
+            </h2>
+            <p style="margin:0.2rem 0 0; color:var(--text-muted); font-size:0.85rem;">
+                Aggregated games for all {{ church.name }} teams across all sports.
+            </p>
+        </div>
+    </div>
+    {% if church_games %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date &amp; Time</th>
+                        <th>Sport / League</th>
+                        <th>Matchup</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in church_games %}
+                    <tr>
+                        <td><strong>{{ g.date|date:"D, M d @ g:i A" }}</strong></td>
+                        <td><span class="badge badge-primary">{{ g.season.league.name }}</span></td>
+                        <td>
+                            <strong {% if g.team1.church == church %}style="color:var(--primary);"{% endif %}>{{ g.team1.name }}</strong>
+                            <span style="color:var(--text-muted); margin:0 0.2rem;">vs</span>
+                            <strong {% if g.team2.church == church %}style="color:var(--primary);"{% endif %}>{{ g.team2.name }}</strong>
+                        </td>
+                        <td>{{ g.location|default:"TBD Field" }}</td>
+                        <td>
+                            {% if g.status == 'in_progress' %}
+                                <span class="badge" style="background:#ef4444; color:#fff;">Live Now</span>
+                            {% elif g.status == 'completed' %}
+                                <span class="badge badge-secondary">Final: {{ g.team1_score }} - {{ g.team2_score }}</span>
+                            {% else %}
+                                <span class="badge badge-success">Scheduled</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right;">
+                            <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0;">No games currently scheduled for this congregation's teams.</p>
+    {% endif %}
 </div>
 
 <!-- Congregation Athletes / Members -->

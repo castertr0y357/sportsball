@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import Church, Announcement
 from .forms import ChurchForm, AnnouncementForm
-from leagues.models import League, Season, Game, Team
+from leagues.models import League, Season, Game, Team, GameOfficialAssignment
 from users.models import CustomUser
 from core.services.notifications import send_discord_notification, send_twilio_sms
 
@@ -75,6 +75,40 @@ def home(request):
     churches_count = Church.objects.count()
     leagues_count = League.objects.count()
 
+    # 6. Officials & Referees Assignments
+    my_officiating_assignments = []
+    open_sub_assignments = []
+    executive_stats = None
+
+    if request.user.is_authenticated:
+        my_officiating_assignments = request.user.officiating_assignments.select_related(
+            'game__team1', 'game__team2', 'game__season__league'
+        ).filter(game__date__gte=now - timezone.timedelta(hours=4)).order_by('game__date')[:5]
+
+        # Open sub claims board
+        if (
+            request.user.role in ['referee', 'admin', 'church_admin', 'coach']
+            or request.user.is_overall_commissioner
+            or request.user.officiating_assignments.exists()
+            or request.user.officials_pools.exists()
+        ):
+            open_sub_assignments = GameOfficialAssignment.objects.filter(
+                status='declined',
+                game__date__gte=now
+            ).select_related('game__team1', 'game__team2', 'game__season__league', 'official').order_by('game__date')[:6]
+
+        if request.user.is_overall_commissioner:
+            unpaid_teams_count = Team.objects.filter(dues_paid=False, season__current=True).count()
+            rainouts_today = Game.objects.filter(date__date=today, status__in=['rainout', 'postponed']).count()
+            pending_waivers_count = CustomUser.objects.filter(waiver_signed=False).count()
+            executive_stats = {
+                'churches_count': churches_count,
+                'active_seasons_count': active_seasons.count(),
+                'unpaid_teams_count': unpaid_teams_count,
+                'rainouts_today': rainouts_today,
+                'pending_waivers_count': pending_waivers_count,
+            }
+
     return render(request, 'core/home.html', {
         'urgent_alerts': urgent_alerts,
         'recent_announcements': recent_announcements,
@@ -92,6 +126,9 @@ def home(request):
         'churches_count': churches_count,
         'leagues_count': leagues_count,
         'today': today,
+        'my_officiating_assignments': my_officiating_assignments,
+        'open_sub_assignments': open_sub_assignments,
+        'executive_stats': executive_stats,
     })
 
 
@@ -173,6 +210,10 @@ def church_detail(request, church_id):
 
     church_invite_url = church.get_invite_url(request)
 
+    church_games = Game.objects.filter(
+        Q(team1__church=church) | Q(team2__church=church)
+    ).select_related('team1', 'team2', 'season__league').order_by('date')[:15]
+
     return render(request, 'core/church_detail.html', {
         'church': church,
         'teams': teams,
@@ -183,6 +224,7 @@ def church_detail(request, church_id):
         'open_seasons': open_seasons,
         'eligible_commissioners': eligible_commissioners,
         'church_invite_url': church_invite_url,
+        'church_games': church_games,
     })
 
 

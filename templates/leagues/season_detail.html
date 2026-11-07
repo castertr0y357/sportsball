@@ -37,6 +37,7 @@
                 <a href="{% url 'create_team' season.id %}" class="btn btn-sm btn-secondary">+ Add Team</a>
             {% endif %}
             {% if can_manage_league %}
+                <a href="{% url 'officials_hub' season.id %}" class="btn btn-sm btn-secondary">⚖️ Officials &amp; Budget Hub</a>
                 <a href="{% url 'schedule_grid' season.id %}" class="btn btn-sm btn-secondary">📊 Master Grid</a>
                 <a href="{% url 'create_game' season.id %}" class="btn btn-sm btn-secondary">+ Schedule Game</a>
                 <a href="{% url 'generate_schedule' season.id %}" class="btn btn-sm btn-accent">⚡ Auto-Generate Schedule</a>
@@ -103,6 +104,7 @@
                         <th>PA</th>
                         <th>DIFF</th>
                         <th>STRK</th>
+                        {% if can_manage_league %}<th>Team Dues</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -120,6 +122,22 @@
                         <td>{{ row.points_against }}</td>
                         <td>{% if row.point_diff > 0 %}+{% endif %}{{ row.point_diff }}</td>
                         <td><span class="badge">{{ row.streak }}</span></td>
+                        {% if can_manage_league %}
+                        <td>
+                            <form method="post" action="{% url 'toggle_team_dues' row.team.id %}" style="margin:0; display:inline;">
+                                {% csrf_token %}
+                                {% if row.team.dues_paid %}
+                                    <button type="submit" class="btn btn-sm" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-size:0.75rem; padding:0.15rem 0.45rem;" title="Click to mark unpaid">
+                                        ✓ Paid
+                                    </button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-sm" style="background:#fffbeb; border:1px solid #f59e0b; color:#b45309; font-size:0.75rem; padding:0.15rem 0.45rem;" title="Click to mark paid (${{ season.registration_fee }})">
+                                        $ Due
+                                    </button>
+                                {% endif %}
+                            </form>
+                        </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>

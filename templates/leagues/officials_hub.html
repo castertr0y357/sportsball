@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Officials &amp; Budget Hub | {{ season.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:1.5rem;">
+    <div>
+        <div style="margin-bottom:0.4rem;">
+            <a href="{% url 'season_detail' season.id %}" style="text-decoration:none; font-size:0.9rem; font-weight:600; color:var(--text-muted);">&larr; Back to {{ season.name }}</a>
+        </div>
+        <h1 style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+            <span>⚖️ Officials &amp; Budget Hub</span>
+            <span class="badge badge-primary" style="font-size:0.8rem; font-weight:600;">{{ season.league.name }}</span>
+        </h1>
+        <p style="margin:0.25rem 0 0; color:var(--text-muted); font-size:0.92rem;">
+            Season referee &amp; umpire pool, 1-click game assignments, substitute coordination, and stipend ledger.
+        </p>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a href="{% url 'schedule_grid' season.id %}" class="btn btn-secondary">📊 Master Schedule Grid</a>
+    </div>
+</div>
+
+<!-- Row 1: Budget Ledger & Pool Management -->
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:1.25rem; margin-bottom:1.5rem;">
+    <!-- Budget Ledger Card -->
+    <div class="card" style="box-shadow:var(--shadow-sm); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+            <div>
+                <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:0.4rem;">
+                    <span>💰 Officials Budget Ledger</span>
+                </h3>
+                <span style="font-size:0.82rem; color:var(--text-muted);">Default pay: <strong>${{ season.official_default_pay }}</strong> / assignment</span>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('budget-edit-form').style.display = document.getElementById('budget-edit-form').style.display === 'none' ? 'block' : 'none';">
+                ⚙️ Adjust
+            </button>
+        </div>
+
+        <!-- 4 Metric Counters -->
+        <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem; margin-bottom:1rem;">
+            <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border-left:4px solid var(--accent);">
+                <div style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">Season Budget</div>
+                <div style="font-size:1.4rem; font-weight:800; color:var(--text);">${{ budget_summary.budget|floatformat:2 }}</div>
+            </div>
+            <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border-left:4px solid #3b82f6;">
+                <div style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">Allocated / Owed</div>
+                <div style="font-size:1.4rem; font-weight:800; color:#2563eb;">${{ budget_summary.allocated|floatformat:2 }}</div>
+            </div>
+            <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border-left:4px solid #10b981;">
+                <div style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">Paid Out</div>
+                <div style="font-size:1.4rem; font-weight:800; color:#059669;">${{ budget_summary.paid|floatformat:2 }}</div>
+            </div>
+            <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border-left:4px solid {% if budget_summary.remaining < 0 %}#ef4444{% else %}#10b981{% endif %};">
+                <div style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">Budget Remaining</div>
+                <div style="font-size:1.4rem; font-weight:800; color:{% if budget_summary.remaining < 0 %}#dc2626{% else %}#059669{% endif %};">
+                    ${{ budget_summary.remaining|floatformat:2 }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Inline Budget Settings Form -->
+        <div id="budget-edit-form" style="display:none; background:var(--surface-alt); padding:1rem; border-radius:8px; margin-top:0.5rem; border:1px solid var(--border);">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_budget">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:0.25rem;">Total Budget ($)</label>
+                        <input type="number" step="0.01" name="officials_budget" value="{{ season.officials_budget }}" class="form-control" style="width:100%; padding:0.4rem; border-radius:4px; border:1px solid var(--border);" required>
+                    </div>
+                    <div>
+                        <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:0.25rem;">Default Pay ($ / Game)</label>
+                        <input type="number" step="0.01" name="official_default_pay" value="{{ season.official_default_pay }}" class="form-control" style="width:100%; padding:0.4rem; border-radius:4px; border:1px solid var(--border);" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary" style="width:100%;">Save Budget Parameters</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Approved Officials Pool Card -->
+    <div class="card" style="box-shadow:var(--shadow-sm); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+            <div>
+                <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:0.4rem;">
+                    <span>👥 Approved Officials Pool</span>
+                </h3>
+                <span style="font-size:0.82rem; color:var(--text-muted);">{{ pool_members.count }} Certified Referees &amp; Umpires</span>
+            </div>
+        </div>
+
+        <!-- Add Pool Member Form -->
+        <form method="post" style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_pool_member">
+            <select name="user_id" class="form-control" style="flex:1; padding:0.4rem; border-radius:4px; border:1px solid var(--border);" required>
+                <option value="">-- Add Official / Referee to Pool --</option>
+                {% for cand in candidate_officials %}
+                    <option value="{{ cand.id }}">{{ cand.display_name }} ({{ cand.get_role_display }}{% if cand.church %}, {{ cand.church.name }}{% endif %})</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-accent" style="white-space:nowrap;">+ Add to Pool</button>
+        </form>
+
+        <!-- Current Pool Badges -->
+        <div style="display:flex; flex-wrap:wrap; gap:0.5rem; max-height:160px; overflow-y:auto; padding-right:0.25rem;">
+            {% for member in pool_members %}
+                <span class="badge" style="background:var(--surface-alt); border:1px solid var(--border); color:var(--text); padding:0.4rem 0.65rem; border-radius:20px; display:inline-flex; align-items:center; gap:0.4rem; font-size:0.84rem;">
+                    <span>👤 {{ member.display_name }}</span>
+                    {% if member.role == 'referee' %}<span style="color:#059669; font-weight:700; font-size:0.75rem;">[Ref]</span>{% endif %}
+                    <form method="post" style="display:inline; margin:0;" onsubmit="return confirm('Remove {{ member.display_name }} from the officials pool?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_pool_member">
+                        <input type="hidden" name="user_id" value="{{ member.id }}">
+                        <button type="submit" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:0 2px; font-size:0.9rem;" title="Remove from pool">&times;</button>
+                    </form>
+                </span>
+            {% empty %}
+                <div style="color:var(--text-muted); font-size:0.88rem; font-style:italic;">No pool members yet. Add umpires or referees above to assign games quickly.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Section 2: Weekly Game Assignments Matrix -->
+<div class="card" style="box-shadow:var(--shadow-sm); border:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+        <div>
+            <h2 style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:0.4rem;">
+                <span>📋 Weekly Game Assignments Matrix</span>
+            </h2>
+            <div style="font-size:0.85rem; color:var(--text-muted);">
+                Assign Plate/Head Referees, Field Judges, and Official Scorekeepers. Status updates in real-time.
+            </div>
+        </div>
+    </div>
+
+    {% if not weeks %}
+        <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+            No games scheduled in this season yet. Auto-generate or add games to begin staffing officials.
+        </div>
+    {% else %}
+        {% for week_num, game_list in weeks %}
+            <div style="margin-bottom:2rem;">
+                <div style="background:var(--surface-alt); padding:0.5rem 0.75rem; border-radius:6px; font-weight:700; font-size:0.95rem; margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Week {{ week_num }}</span>
+                    <span style="font-size:0.8rem; font-weight:500; color:var(--text-muted);">{{ game_list|length }} Game{{ game_list|length|pluralize }}</span>
+                </div>
+
+                <div style="display:grid; gap:1rem;">
+                    {% for game in game_list %}
+                        <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+                            <!-- Game Header -->
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; border-bottom:1px solid var(--border-light, #f1f5f9); padding-bottom:0.5rem;">
+                                <div>
+                                    <strong style="font-size:1.05rem;">{{ game.team1.name }}</strong>
+                                    <span style="color:var(--text-muted); font-size:0.9rem; margin:0 0.25rem;">vs</span>
+                                    <strong style="font-size:1.05rem;">{{ game.team2.name }}</strong>
+                                    <span style="font-size:0.84rem; color:var(--text-muted); margin-left:0.5rem;">&bull; {{ game.date|date:"D, M d @ g:i A" }}</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:0.8rem;">📍 {{ game.location|default:"TBD Field" }}</span>
+                                    <a href="{% url 'game_detail' game.id %}" class="btn btn-sm btn-secondary" style="font-size:0.75rem; padding:0.2rem 0.5rem;">Game Details</a>
+                                </div>
+                            </div>
+
+                            <!-- Assignments for this game -->
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:0.75rem;">
+                                <!-- Role 1: Head Ref / Plate Umpire -->
+                                {% with assign=game.official_assignments.all %}
+                                    <!-- Render existing assignments -->
+                                    {% for a in assign %}
+                                        <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.75rem; display:flex; justify-content:space-between; align-items:center;">
+                                            <div>
+                                                <div style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">
+                                                    {{ a.get_role_display }}
+                                                </div>
+                                                <div style="font-weight:700; font-size:0.92rem; display:flex; align-items:center; gap:0.35rem; margin:0.15rem 0;">
+                                                    <span>{{ a.official.display_name }}</span>
+                                                    {% if a.status == 'confirmed' %}
+                                                        <span class="badge badge-success" style="font-size:0.72rem;">✓ Confirmed</span>
+                                                    {% elif a.status == 'declined' %}
+                                                        <span class="badge" style="background:#ef4444; color:white; font-size:0.72rem;">⚠️ Needs Sub!</span>
+                                                    {% else %}
+                                                        <span class="badge badge-secondary" style="font-size:0.72rem;">Assigned</span>
+                                                    {% endif %}
+                                                </div>
+                                                <div style="font-size:0.78rem; color:var(--text-muted);">
+                                                    Stipend: <strong>${{ a.pay_amount }}</strong> &bull;
+                                                    {% if a.pay_status == 'paid' %}
+                                                        <span style="color:#059669; font-weight:700;">Paid</span>
+                                                    {% else %}
+                                                        <span style="color:#d97706; font-weight:700;">Unpaid</span>
+                                                    {% endif %}
+                                                    {% if a.notes %}<span style="font-style:italic;">({{ a.notes }})</span>{% endif %}
+                                                </div>
+                                            </div>
+
+                                            <div style="display:flex; flex-direction:column; gap:0.3rem; align-items:flex-end;">
+                                                <!-- Toggle Pay Status -->
+                                                <form method="post" style="margin:0;">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="toggle_pay_status">
+                                                    <input type="hidden" name="assignment_id" value="{{ a.id }}">
+                                                    {% if a.pay_status == 'paid' %}
+                                                        <button type="submit" class="btn btn-sm" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-size:0.72rem; padding:0.15rem 0.45rem;">
+                                                            ✓ Paid
+                                                        </button>
+                                                    {% else %}
+                                                        <button type="submit" class="btn btn-sm" style="background:#fffbeb; border:1px solid #f59e0b; color:#b45309; font-size:0.72rem; padding:0.15rem 0.45rem;">
+                                                            $ Mark Paid
+                                                        </button>
+                                                    {% endif %}
+                                                </form>
+
+                                                <!-- Reassign trigger -->
+                                                <button type="button" class="btn btn-sm btn-secondary" style="font-size:0.7rem; padding:0.1rem 0.4rem;" onclick="document.getElementById('assign-form-{{ game.id }}').style.display='block';">
+                                                    Edit
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                {% endwith %}
+                            </div>
+
+                            <!-- Assign New Official Row / Form -->
+                            <div style="margin-top:0.25rem;">
+                                <button type="button" class="btn btn-sm btn-secondary" style="font-size:0.8rem;" onclick="var f=document.getElementById('assign-form-{{ game.id }}'); f.style.display = (f.style.display==='none'?'block':'none');">
+                                    + Assign Official to this Game
+                                </button>
+                                <div id="assign-form-{{ game.id }}" style="display:none; background:var(--surface-alt); padding:0.75rem; border-radius:6px; margin-top:0.5rem; border:1px solid var(--border);">
+                                    <form method="post" style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:flex-end;">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="assign_official">
+                                        <input type="hidden" name="game_id" value="{{ game.id }}">
+                                        
+                                        <div style="flex:1; min-width:140px;">
+                                            <label style="font-size:0.75rem; font-weight:600; display:block; margin-bottom:0.2rem;">Official</label>
+                                            <select name="official_id" class="form-control" style="width:100%; padding:0.35rem; font-size:0.82rem; border-radius:4px; border:1px solid var(--border);" required>
+                                                <option value="">-- Select Official --</option>
+                                                <optgroup label="Officials Pool">
+                                                    {% for p in pool_members %}
+                                                        <option value="{{ p.id }}">{{ p.display_name }} (Pool)</option>
+                                                    {% endfor %}
+                                                </optgroup>
+                                                {% if candidate_officials %}
+                                                    <optgroup label="Other Referees / Users">
+                                                        {% for c in candidate_officials %}
+                                                            <option value="{{ c.id }}">{{ c.display_name }} ({{ c.get_role_display }})</option>
+                                                        {% endfor %}
+                                                    </optgroup>
+                                                {% endif %}
+                                            </select>
+                                        </div>
+
+                                        <div style="width:170px;">
+                                            <label style="font-size:0.75rem; font-weight:600; display:block; margin-bottom:0.2rem;">Role</label>
+                                            <select name="role" class="form-control" style="width:100%; padding:0.35rem; font-size:0.82rem; border-radius:4px; border:1px solid var(--border);" required>
+                                                <option value="head_ref">Head Ref / Plate Ump</option>
+                                                <option value="field_ref">Field Ump / Line Judge</option>
+                                                <option value="scorekeeper">Official Scorekeeper</option>
+                                            </select>
+                                        </div>
+
+                                        <div style="width:100px;">
+                                            <label style="font-size:0.75rem; font-weight:600; display:block; margin-bottom:0.2rem;">Stipend ($)</label>
+                                            <input type="number" step="0.01" name="pay_amount" value="{{ season.official_default_pay }}" class="form-control" style="width:100%; padding:0.35rem; font-size:0.82rem; border-radius:4px; border:1px solid var(--border);" required>
+                                        </div>
+
+                                        <div>
+                                            <button type="submit" class="btn btn-sm btn-primary" style="font-size:0.82rem; padding:0.35rem 0.75rem;">Save Assignment</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

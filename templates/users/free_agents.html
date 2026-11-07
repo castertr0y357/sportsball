@@ -9,6 +9,33 @@
     </div>
 </div>
 
+{% if user.is_authenticated %}
+<!-- Emergency Sub Availability Beacon -->
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:0.9rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <strong style="font-size:1rem;">🚑 Emergency Substitute Beacon</strong>
+            <p style="margin:0.15rem 0 0; font-size:0.86rem; color:var(--text-muted);">
+                Are you available to fill in or sub for any church team that is short on players this week?
+            </p>
+        </div>
+        <form method="post" action="{% url 'toggle_sub_availability' %}" style="margin:0;">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            {% if user.is_sub_available %}
+                <button type="submit" class="btn btn-sm" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-weight:700;">
+                    🟢 Available to Sub This Week
+                </button>
+            {% else %}
+                <button type="submit" class="btn btn-sm btn-secondary">
+                    ⚪ Set Available to Sub
+                </button>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card">
     {% if free_agents %}
         <div class="table-wrap">
@@ -18,6 +45,7 @@
                         <th>Player</th>
                         <th>Home Church</th>
                         <th>Role</th>
+                        <th>Sub Beacon</th>
                         {% if user.can_manage_teams %}
                             <th>Waiver</th>
                         {% endif %}
@@ -30,6 +58,13 @@
                         <td><a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a></td>
                         <td>{{ p.church.name|default:"Unlisted / Visiting" }}</td>
                         <td>{{ p.get_role_display }}</td>
+                        <td>
+                            {% if p.is_sub_available %}
+                                <span class="badge" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-weight:700; font-size:0.75rem;">🟢 Available</span>
+                            {% else %}
+                                <span style="color:var(--text-muted); font-size:0.8rem;">-</span>
+                            {% endif %}
+                        </td>
                         {% if user.can_manage_teams %}
                         <td>
                             {% if p.waiver_signed %}

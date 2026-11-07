@@ -22,9 +22,25 @@
         {% if profile_user.is_free_agent %}
             <span class="badge badge-warning">Free Agent (Looking for Team)</span>
         {% endif %}
+        {% if profile_user.is_sub_available %}
+            <span class="badge" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-weight:700;">🟢 Available to Sub</span>
+        {% endif %}
     </div>
     {% if user == profile_user %}
-        <div style="display:flex; gap:0.5rem;">
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <form method="post" action="{% url 'toggle_sub_availability' %}" style="display:inline; margin:0;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+                {% if profile_user.is_sub_available %}
+                    <button type="submit" class="btn btn-sm" style="background:#ecfdf5; border:1px solid #10b981; color:#059669; font-weight:700;">
+                        🟢 Available to Sub This Week
+                    </button>
+                {% else %}
+                    <button type="submit" class="btn btn-sm btn-secondary" title="Mark yourself available to sub for short-handed teams this week">
+                        ⚪ Set Available to Sub
+                    </button>
+                {% endif %}
+            </form>
             <a href="{% url 'edit_profile' %}" class="btn btn-secondary">Edit Profile &amp; Walk-Up Song</a>
             {% if not profile_user.waiver_signed %}
                 <a href="{% url 'sign_waiver' %}" class="btn btn-accent">Sign Liability Waiver</a>

@@ -67,6 +67,9 @@
                     &#9889; Autofill from RSVPs
                 </button>
             </form>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyWhatsAppReminder()" title="Copy pre-formatted reminder for team WhatsApp or group text">
+                💬 Copy RSVP Reminder
+            </button>
             <form method="post" style="margin:0; display:inline;">
                 {% csrf_token %}
                 <button type="submit" name="action" value="save_as_default" class="btn btn-secondary btn-sm" title="Save this lineup as the master template for future games">
@@ -303,6 +306,18 @@ function copyLineupCard() {
         });
     } else {
         prompt("Copy lineup card:", text);
+    }
+}
+</script>
+<script>
+function copyWhatsAppReminder() {
+    const text = "⚾ Hey team! Reminder for our upcoming game: {{ team.name }} vs {{ opponent.name }} on {{ game.date|date:'l, M d @ g:i A' }} at {{ game.location }}. Please confirm if you can make it here: " + window.location.origin + "{% url 'game_detail' game.id %}";
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert("✓ Copied game reminder to clipboard! Paste it into your team chat or WhatsApp group.");
+        });
+    } else {
+        prompt("Copy this reminder to send to your team:", text);
     }
 }
 </script>

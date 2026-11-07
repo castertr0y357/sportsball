@@ -41,4 +41,8 @@ urlpatterns = [
     path('seasons/<int:season_id>/rainout-today/', views.rainout_today_games, name='rainout_today_games'),
     path('seasons/<int:season_id>/schedule-grid/', views.schedule_grid, name='schedule_grid'),
     path('seasons/<int:season_id>/schedule/swap/', views.swap_game_slots, name='swap_game_slots'),
+    path('seasons/<int:season_id>/officials/', views.officials_hub, name='officials_hub'),
+    path('officials/assignments/<int:assignment_id>/respond/', views.respond_official_assignment, name='respond_official_assignment'),
+    path('officials/assignments/<int:assignment_id>/claim/', views.claim_official_assignment, name='claim_official_assignment'),
+    path('teams/<int:team_id>/toggle-dues/', views.toggle_team_dues, name='toggle_team_dues'),
 ]

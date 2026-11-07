@@ -122,6 +122,47 @@ class Season(models.Model):
         blank=True,
         help_text="Saved schedule preferences (days, times, venues, blackouts)"
     )
+    officials_budget = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=0.00,
+        help_text="Total budget allocated for paid officials ($)"
+    )
+    official_default_pay = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=30.00,
+        help_text="Default pay per official per game ($)"
+    )
+    officials_pool = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='officiating_seasons',
+        help_text="Approved referees, umpires, and scorekeepers for this season"
+    )
+
+    def get_officials_budget_summary(self):
+        from decimal import Decimal
+        from leagues.models import GameOfficialAssignment
+        from django.db.models import Sum
+        assignments = GameOfficialAssignment.objects.filter(game__season=self)
+        total_allocated = Decimal(str(assignments.aggregate(Sum('pay_amount'))['pay_amount__sum'] or '0.00'))
+        total_paid = Decimal(str(assignments.filter(pay_status='paid').aggregate(Sum('pay_amount'))['pay_amount__sum'] or '0.00'))
+        budget = Decimal(str(self.officials_budget or '0.00'))
+        remaining = budget - total_allocated
+        total_owed = total_allocated - total_paid
+        return {
+            'budget': float(budget),
+            'total_allocated': float(total_allocated),
+            'allocated': float(total_allocated),
+            'total_paid': float(total_paid),
+            'paid': float(total_paid),
+            'total_owed': float(total_owed),
+            'owed': float(total_owed),
+            'remaining': float(remaining),
+            'total_assignments': assignments.count(),
+            'needs_sub_count': assignments.filter(status='declined').count(),
+        }
 
     class Meta:
         ordering = ['-current', '-start_date']
@@ -563,3 +604,39 @@ class GameRSVP(models.Model):
 
     def __str__(self):
         return f"{self.player.display_name} -> {self.get_response_display()} ({self.game})"
+
+
+class GameOfficialAssignment(models.Model):
+    ROLE_CHOICES = [
+        ('head_ref', 'Head Referee / Plate Umpire'),
+        ('field_ref', 'Field Umpire / Line Judge'),
+        ('scorekeeper', 'Official Scorekeeper'),
+    ]
+    STATUS_CHOICES = [
+        ('assigned', 'Assigned (Pending Confirmation)'),
+        ('confirmed', 'Confirmed In'),
+        ('declined', 'Declined / Needs Sub'),
+        ('completed', 'Officiated / Completed'),
+    ]
+    PAY_STATUS_CHOICES = [
+        ('unpaid', 'Unpaid'),
+        ('paid', 'Paid'),
+        ('volunteer', 'Volunteer / Fellowship'),
+    ]
+
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='official_assignments')
+    official = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='officiating_assignments')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='head_ref')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='assigned')
+    pay_amount = models.DecimalField(max_digits=6, decimal_places=2, default=30.00, help_text="Pay stipend for this assignment ($)")
+    pay_status = models.CharField(max_length=20, choices=PAY_STATUS_CHOICES, default='unpaid')
+    notes = models.CharField(max_length=150, blank=True, help_text="e.g. Needs sub due to work travel")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['game__date', 'role']
+        unique_together = [('game', 'official', 'role')]
+
+    def __str__(self):
+        return f"{self.official.display_name} - {self.get_role_display()} ({self.game})"

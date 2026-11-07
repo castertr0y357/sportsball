@@ -21,6 +21,9 @@
                 📅 Export / Subscribe (.ics)
             </a>
             {% if can_manage %}
+                <a href="{% url 'officials_hub' season.id %}" class="btn btn-secondary" style="font-size: 0.9rem;">
+                    ⚖️ Officials &amp; Budget Hub
+                </a>
                 <a href="{% url 'generate_schedule' season.id %}" class="btn btn-primary" style="font-size: 0.9rem;">
                     ⚡ Auto-Generate Schedule
                 </a>
@@ -147,6 +150,23 @@
                                         <span style="display: inline-block; padding: 0.2rem 0.5rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem;">
                                             📍 {{ g.location }}
                                         </span>
+                                        {% with off_assign=g.official_assignments.all %}
+                                            {% if off_assign %}
+                                                <div style="font-size: 0.72rem; margin-top: 0.25rem; display: flex; gap: 0.2rem; flex-wrap: wrap;">
+                                                    {% for a in off_assign %}
+                                                        <span style="background: var(--surface-alt, rgba(0,0,0,0.05)); border: 1px solid var(--border-color); padding: 0.05rem 0.35rem; border-radius: 3px; font-size: 0.7rem; color: var(--text-muted);">
+                                                            ⚖️ {{ a.official.display_name }} ({{ a.get_role_display }})
+                                                        </span>
+                                                    {% endfor %}
+                                                </div>
+                                            {% elif can_manage %}
+                                                <div style="font-size: 0.72rem; margin-top: 0.2rem;">
+                                                    <a href="{% url 'officials_hub' season.id %}" style="color: #d97706; text-decoration: none; font-weight: 600;">
+                                                        ⚠️ Needs Official
+                                                    </a>
+                                                </div>
+                                            {% endif %}
+                                        {% endwith %}
                                     </td>
                                     <td style="padding: 0.65rem 0.5rem;">
                                         <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">

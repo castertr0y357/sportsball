@@ -160,3 +160,13 @@ def sign_waiver(request):
 def free_agent_list(request):
     free_agents = CustomUser.objects.filter(is_free_agent=True).select_related('church').order_by('username')
     return render(request, 'users/free_agents.html', {'free_agents': free_agents})
+
+
+@login_required
+def toggle_sub_availability(request):
+    user = request.user
+    user.is_sub_available = not user.is_sub_available
+    user.save(update_fields=['is_sub_available'])
+    state = "Available to Sub" if user.is_sub_available else "Not Available to Sub"
+    messages.success(request, f"Updated your sub beacon: {state}!")
+    return redirect(request.POST.get('next') or request.META.get('HTTP_REFERER') or 'profile')

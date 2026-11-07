@@ -30,4 +30,5 @@ urlpatterns = [
     path('profile/waiver/', views.sign_waiver, name='sign_waiver'),
     path('players/<int:user_id>/', views.player_detail, name='player_detail'),
     path('free-agents/', views.free_agent_list, name='free_agent_list'),
+    path('profile/toggle-sub/', views.toggle_sub_availability, name='toggle_sub_availability'),
 ]
