@@ -246,7 +246,19 @@ a:hover {
 }
 
 .account-avatar.guest-avatar {
-  background: #475569;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.account-btn.account-btn-guest {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.account-btn.account-btn-guest:hover {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .account-name-block {
@@ -938,6 +950,10 @@ footer {
 
   .account-name-block {
     display: none;
+  }
+
+  .account-btn.account-btn-guest .account-name-block {
+    display: inline-block;
   }
 
   .account-btn {
