@@ -1462,7 +1462,7 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.team1.refresh_from_db()
         self.assertFalse(self.team1.dues_paid)
 
-    def test_free_agent_sub_availability_toggle(self):
+    def test_free_agent_sub_availability_toggle_and_least_privilege(self):
         self.assertFalse(self.player_user.is_sub_available)
         self.client.login(username="player_user", password="password123")
 
@@ -1472,11 +1472,23 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.player_user.refresh_from_db()
         self.assertTrue(self.player_user.is_sub_available)
 
-        # Verify appears on free agents board
+        # 1. Least Privilege: Player is blocked from viewing free agent pool & sidebar link is hidden
         self.player_user.is_free_agent = True
         self.player_user.save()
-        resp_board = self.client.get(reverse('free_agent_list'))
-        self.assertContains(resp_board, "🟢 Available")
+        resp_player = self.client.get(reverse('free_agent_list'))
+        self.assertEqual(resp_player.status_code, 302)  # redirected to home
+
+        resp_home = self.client.get(reverse('home'))
+        self.assertNotContains(resp_home, reverse('free_agent_list'))
+
+        # 2. Coaches & above can view free agents pool and see the sub beacon
+        self.client.login(username="coach_user", password="password123")
+        resp_coach = self.client.get(reverse('free_agent_list'))
+        self.assertEqual(resp_coach.status_code, 200)
+        self.assertContains(resp_coach, "🟢 Available")
+
+        resp_coach_home = self.client.get(reverse('home'))
+        self.assertContains(resp_coach_home, reverse('free_agent_list'))
 
     def test_assigned_referee_can_score_game_least_privilege(self):
         from leagues.models import GameOfficialAssignment

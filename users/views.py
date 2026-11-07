@@ -158,6 +158,10 @@ def sign_waiver(request):
 
 @login_required
 def free_agent_list(request):
+    if not request.user.can_manage_teams:
+        messages.info(request, "The Free Agent directory is reserved for team coaches and league leaders looking to recruit players.")
+        return redirect('home')
+
     free_agents = CustomUser.objects.filter(is_free_agent=True).select_related('church').order_by('username')
     return render(request, 'users/free_agents.html', {'free_agents': free_agents})
 

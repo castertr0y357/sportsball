@@ -193,10 +193,12 @@
                     <span class="sidebar-icon">&#128200;</span>
                     <span class="sidebar-text">Stat Leaderboards</span>
                 </a>
+                {% if user.can_manage_teams %}
                 <a href="{% url 'free_agent_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'free_agent_list' %}active{% endif %}">
                     <span class="sidebar-icon">&#127939;</span>
                     <span class="sidebar-text">Free Agents</span>
                 </a>
+                {% endif %}
                 <a href="{% url 'announcement_list' %}" class="sidebar-link {% if 'announcement' in request.resolver_match.url_name %}active{% endif %}">
                     <span class="sidebar-icon">&#128226;</span>
                     <span class="sidebar-text">Announcements</span>
