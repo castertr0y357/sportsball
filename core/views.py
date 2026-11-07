@@ -1,5 +1,6 @@
 from datetime import date
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
@@ -61,16 +62,64 @@ def home(request):
             )
             next_game_rsvp_summary = my_next_game.get_team_rsvp_summary(my_team)
 
-    # 4. Upcoming scheduled matchups (future days)
-    upcoming_games = Game.objects.filter(
-        status='scheduled',
-        date__date__gt=today
-    ).select_related('team1', 'team2', 'season__league').order_by('date')[:5]
+    # 4. Upcoming scheduled matchups & Recent Results - scoped to rostered players, confirmed subs, or coaches
+    user_has_team_or_sub = False
+    see_all_schedule_url = None
+    upcoming_games = []
+    recent_results = []
 
-    # 5. Recent completed scores
-    recent_results = Game.objects.filter(
-        status='completed'
-    ).select_related('team1', 'team2', 'season__league').order_by('-date')[:5]
+    if request.user.is_authenticated:
+        user_teams = request.user.teams.all()
+        captained_teams = request.user.captained_teams.all()
+
+        confirmed_sub_game_ids = set(
+            request.user.officiating_assignments.filter(status='confirmed', game__date__gte=now)
+            .values_list('game_id', flat=True)
+        )
+        subbed_game_ids = set(
+            request.user.lineup_appearances.filter(game__date__gte=now, is_present=True)
+            .values_list('game_id', flat=True)
+        )
+        all_sub_game_ids = confirmed_sub_game_ids.union(subbed_game_ids)
+
+        is_assigned_to_team = user_teams.exists() or captained_teams.exists()
+        is_confirmed_sub = bool(all_sub_game_ids)
+        is_staff_or_commish = request.user.can_manage_teams or request.user.is_league_admin
+
+        user_has_team_or_sub = is_assigned_to_team or is_confirmed_sub or is_staff_or_commish
+
+        if user_has_team_or_sub:
+            if is_assigned_to_team or is_confirmed_sub:
+                upcoming_games = Game.objects.filter(
+                    Q(team1__in=user_teams) | Q(team2__in=user_teams) |
+                    Q(team1__in=captained_teams) | Q(team2__in=captained_teams) |
+                    Q(id__in=all_sub_game_ids),
+                    status='scheduled',
+                    date__date__gt=today
+                ).select_related('team1', 'team2', 'season__league').order_by('date')[:5]
+
+                recent_results = Game.objects.filter(
+                    Q(team1__in=user_teams) | Q(team2__in=user_teams) |
+                    Q(team1__in=captained_teams) | Q(team2__in=captained_teams) |
+                    Q(id__in=all_sub_game_ids),
+                    status='completed'
+                ).select_related('team1', 'team2', 'season__league').order_by('-date')[:5]
+            else:
+                upcoming_games = Game.objects.filter(
+                    status='scheduled',
+                    date__date__gt=today
+                ).select_related('team1', 'team2', 'season__league').order_by('date')[:5]
+
+                recent_results = Game.objects.filter(
+                    status='completed'
+                ).select_related('team1', 'team2', 'season__league').order_by('-date')[:5]
+
+            if my_team and my_team.season_id:
+                see_all_schedule_url = reverse('schedule_grid', args=[my_team.season_id])
+            elif active_seasons.exists():
+                see_all_schedule_url = reverse('schedule_grid', args=[active_seasons.first().id])
+            else:
+                see_all_schedule_url = reverse('league_list')
 
     churches_count = Church.objects.count()
     leagues_count = League.objects.count()
@@ -126,6 +175,8 @@ def home(request):
         'churches_count': churches_count,
         'leagues_count': leagues_count,
         'today': today,
+        'user_has_team_or_sub': user_has_team_or_sub,
+        'see_all_schedule_url': see_all_schedule_url,
         'my_officiating_assignments': my_officiating_assignments,
         'open_sub_assignments': open_sub_assignments,
         'executive_stats': executive_stats,

@@ -201,7 +201,14 @@
                 {% endif %}
                 <a href="{% url 'announcement_list' %}" class="sidebar-link {% if 'announcement' in request.resolver_match.url_name %}active{% endif %}">
                     <span class="sidebar-icon">&#128226;</span>
-                    <span class="sidebar-text">Announcements</span>
+                    <span class="sidebar-text" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                        <span>Announcements</span>
+                        {% if new_announcements_count > 0 %}
+                            <span class="badge" style="background:#ef4444; color:#fff; font-size:0.7rem; font-weight:700; padding:0.12rem 0.45rem; border-radius:10px; margin-left:auto;" title="{{ new_announcements_count }} new announcement{{ new_announcements_count|pluralize }}">
+                                {{ new_announcements_count }}
+                            </span>
+                        {% endif %}
+                    </span>
                 </a>
 
                 {% if user.is_league_admin %}

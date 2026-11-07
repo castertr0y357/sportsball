@@ -328,9 +328,10 @@ function submitHomeRsvp(gameId, responseVal) {
     </div>
 {% endif %}
 
-<!-- Member Main Operational Grid -->
+<!-- Member Operational Layout -->
+{% if user_has_team_or_sub %}
 <div class="grid grid-2" style="margin-bottom:1.5rem;">
-    <!-- Active Seasons -->
+    <!-- Active Seasons Card -->
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
             <h2 style="font-size:1.15rem; margin:0;">Active Seasons</h2>
@@ -379,128 +380,191 @@ function submitHomeRsvp(gameId, responseVal) {
         {% endif %}
     </div>
 
-    <!-- League Announcements -->
+    <!-- Scoped Game Center: Upcoming Schedule with Tabbed Recent Scores -->
     <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
-            <h2 style="font-size:1.15rem; margin:0;">Announcements</h2>
-            <div style="display:flex; gap:0.4rem; align-items:center;">
-                {% if user.can_manage_teams %}
-                    <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">+ Post</a>
-                {% endif %}
-                <a href="{% url 'announcement_list' %}" style="font-size:0.84rem;">All &rarr;</a>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div style="display:inline-flex; background:var(--surface-alt); padding:2px; border-radius:6px; border:1px solid var(--border); font-size:0.78rem;">
+                    <button type="button" id="btnTabUpcoming" class="btn btn-sm btn-accent" style="padding:0.18rem 0.55rem; font-size:0.78rem;" onclick="switchGameCenterTab('upcoming')">
+                        📅 Upcoming Schedule{% if upcoming_games %} ({{ upcoming_games|length }}){% endif %}
+                    </button>
+                    <button type="button" id="btnTabResults" class="btn btn-sm btn-secondary" style="padding:0.18rem 0.55rem; font-size:0.78rem;" onclick="switchGameCenterTab('results')">
+                        🏆 Recent Scores{% if recent_results %} ({{ recent_results|length }}){% endif %}
+                    </button>
+                </div>
             </div>
+            {% if see_all_schedule_url %}
+                <a href="{{ see_all_schedule_url }}" style="font-size:0.84rem; font-weight:600;" id="seeAllScheduleBtn">See All &rarr;</a>
+            {% endif %}
         </div>
-        {% if recent_announcements %}
-            <ul style="padding-left:1.1rem; margin:0.25rem 0 0;">
-                {% for a in recent_announcements %}
-                    <li style="margin-bottom:0.65rem;">
-                        <span class="badge">{{ a.get_category_display }}</span>
-                        <strong>{{ a.title }}</strong> &mdash;
-                        <span style="color:var(--text-muted); font-size:0.88rem;">{{ a.content|truncatewords:16 }}</span>
-                    </li>
-                {% endfor %}
-            </ul>
-        {% else %}
-            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">
-                No announcements posted yet.
-            </p>
-        {% endif %}
-    </div>
-</div>
 
-<div class="grid grid-2">
-    <!-- Upcoming Games -->
-    <div class="card">
-        <h2 style="font-size:1.15rem; margin:0 0 0.75rem;">Upcoming Schedule</h2>
-        {% if upcoming_games %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date / Time</th>
-                            <th>Matchup</th>
-                            <th>Location</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for g in upcoming_games %}
-                        <tr>
-                            <td style="font-size:0.88rem;">
-                                <strong>{{ g.date|date:"M d" }}</strong><br>
-                                <span style="color:var(--text-muted);">{{ g.date|date:"g:i A" }}</span>
-                            </td>
-                            <td>
-                                <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
-                                    {{ g.team1.name }} vs {{ g.team2.name }}
-                                </a>
-                                {% if g.game_type != 'regular' %}
-                                    <br><span class="badge badge-warning" style="font-size:0.72rem;">{{ g.get_game_type_display }}</span>
-                                {% endif %}
-                            </td>
-                            <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.location }}</td>
-                            <td style="text-align:right;">
-                                {% if g.status == 'in_progress' %}
-                                    <a href="{% url 'gamecast' g.id %}" class="btn btn-sm btn-accent">🔴 GameCast</a>
-                                {% elif user.can_record_scores and g.date.date == today %}
-                                    <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Score</a>
-                                {% else %}
-                                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No upcoming scheduled games.</p>
-        {% endif %}
-    </div>
-
-    <!-- Recent Final Scores -->
-    <div class="card">
-        <h2 style="font-size:1.15rem; margin:0 0 0.75rem;">Recent Results</h2>
-        {% if recent_results %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Final Score</th>
-                            <th>Season</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for g in recent_results %}
-                        <tr>
-                            <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.date|date:"M d" }}</td>
-                            <td>
-                                <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
-                                    {% if g.team1_score > g.team2_score %}
-                                        <strong>{{ g.team1.name }} {{ g.team1_score }}</strong> &ndash; {{ g.team2_score }} {{ g.team2.name }}
-                                    {% elif g.team2_score > g.team1_score %}
-                                        {{ g.team1.name }} {{ g.team1_score }} &ndash; <strong>{{ g.team2_score }} {{ g.team2.name }}</strong>
-                                    {% else %}
-                                        {{ g.team1.name }} {{ g.team1_score }} &ndash; {{ g.team2_score }} {{ g.team2.name }} (Tie)
+        <!-- Tab 1: Upcoming Schedule -->
+        <div id="tabViewUpcoming">
+            {% if upcoming_games %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date / Time</th>
+                                <th>Matchup</th>
+                                <th>Location</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in upcoming_games %}
+                            <tr>
+                                <td style="font-size:0.88rem;">
+                                    <strong>{{ g.date|date:"M d" }}</strong><br>
+                                    <span style="color:var(--text-muted);">{{ g.date|date:"g:i A" }}</span>
+                                </td>
+                                <td>
+                                    <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
+                                        {{ g.team1.name }} vs {{ g.team2.name }}
+                                    </a>
+                                    {% if g.game_type != 'regular' %}
+                                        <br><span class="badge badge-warning" style="font-size:0.72rem;">{{ g.get_game_type_display }}</span>
                                     {% endif %}
-                                </a>
-                            </td>
-                            <td style="font-size:0.84rem; color:var(--text-muted);">{{ g.season.name }}</td>
-                            <td style="text-align:right;">
-                                <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No completed games recorded yet.</p>
-        {% endif %}
+                                </td>
+                                <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.location }}</td>
+                                <td style="text-align:right;">
+                                    {% if g.status == 'in_progress' %}
+                                        <a href="{% url 'gamecast' g.id %}" class="btn btn-sm btn-accent">🔴 GameCast</a>
+                                    {% elif user.can_record_scores and g.date.date == today %}
+                                        <a href="{% url 'dugout_console' g.id %}" class="btn btn-sm btn-accent">Score</a>
+                                    {% else %}
+                                        <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Details</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No upcoming games scheduled for your team or assignments.</p>
+            {% endif %}
+        </div>
+
+        <!-- Tab 2: Recent Results -->
+        <div id="tabViewResults" style="display:none;">
+            {% if recent_results %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Final Score</th>
+                                <th>Season</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in recent_results %}
+                            <tr>
+                                <td style="font-size:0.88rem; color:var(--text-muted);">{{ g.date|date:"M d" }}</td>
+                                <td>
+                                    <a href="{% url 'game_detail' g.id %}" style="font-weight:600;">
+                                        {% if g.team1_score > g.team2_score %}
+                                            <strong>{{ g.team1.name }} {{ g.team1_score }}</strong> &ndash; {{ g.team2_score }} {{ g.team2.name }}
+                                        {% elif g.team2_score > g.team1_score %}
+                                            {{ g.team1.name }} {{ g.team1_score }} &ndash; <strong>{{ g.team2_score }} {{ g.team2.name }}</strong>
+                                        {% else %}
+                                            {{ g.team1.name }} {{ g.team1_score }} &ndash; {{ g.team2_score }} {{ g.team2.name }} (Tie)
+                                        {% endif %}
+                                    </a>
+                                </td>
+                                <td style="font-size:0.84rem; color:var(--text-muted);">{{ g.season.name }}</td>
+                                <td style="text-align:right;">
+                                    <a href="{% url 'game_detail' g.id %}" class="btn btn-sm btn-secondary">Box Score</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">No completed games recorded yet.</p>
+            {% endif %}
+        </div>
     </div>
 </div>
+
+<script>
+function switchGameCenterTab(tab) {
+    const upcomingDiv = document.getElementById('tabViewUpcoming');
+    const resultsDiv = document.getElementById('tabViewResults');
+    const btnUpcoming = document.getElementById('btnTabUpcoming');
+    const btnResults = document.getElementById('btnTabResults');
+    if (tab === 'upcoming') {
+        if (upcomingDiv) upcomingDiv.style.display = 'block';
+        if (resultsDiv) resultsDiv.style.display = 'none';
+        if (btnUpcoming) { btnUpcoming.classList.add('btn-accent'); btnUpcoming.classList.remove('btn-secondary'); }
+        if (btnResults) { btnResults.classList.remove('btn-accent'); btnResults.classList.add('btn-secondary'); }
+    } else {
+        if (upcomingDiv) upcomingDiv.style.display = 'none';
+        if (resultsDiv) resultsDiv.style.display = 'block';
+        if (btnUpcoming) { btnUpcoming.classList.remove('btn-accent'); btnUpcoming.classList.add('btn-secondary'); }
+        if (btnResults) { btnResults.classList.add('btn-accent'); btnResults.classList.remove('btn-secondary'); }
+    }
+}
+</script>
+
+{% else %}
+<!-- Non-Rostered Member View (Clean Active Seasons Card without Schedule Clutter) -->
+<div class="card" style="margin-bottom:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <div>
+            <h2 style="font-size:1.15rem; margin:0;">Active Leagues &amp; Seasons</h2>
+            <p style="margin:0.2rem 0 0; color:var(--text-muted); font-size:0.86rem;">
+                Browse current sports ministries open for registration or view league standings
+            </p>
+        </div>
+        <a href="{% url 'league_list' %}" style="font-size:0.84rem; font-weight:600;">All Leagues &rarr;</a>
+    </div>
+    {% if active_seasons %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>League / Sport</th>
+                        <th>Season</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in active_seasons %}
+                    <tr>
+                        <td>
+                            <strong>{{ s.league.name }}</strong><br>
+                            <span class="badge badge-primary">{{ s.league.get_sport_display }}</span>
+                        </td>
+                        <td>{{ s.name }}</td>
+                        <td>
+                            {% if s.registration_open %}
+                                <span class="badge badge-success">Registration Open</span>
+                            {% else %}
+                                <span class="badge">In Season</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right;">
+                            <a href="{% url 'season_detail' s.id %}" class="btn btn-sm btn-secondary">
+                                Standings &amp; Schedule
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted); font-size:0.92rem; margin:0.5rem 0;">
+            No active seasons currently open. <a href="{% url 'league_list' %}">Explore past leagues</a>.
+        </p>
+    {% endif %}
+</div>
+{% endif %}
 
 {% else %}
 <!-- =========================================================================

@@ -1527,3 +1527,37 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Liability Waiver &amp; Sportsmanship Covenant Required")
         self.assertContains(resp, "Sign Waiver Now")
+
+
+    def test_home_dashboard_schedule_scoping_and_announcement_badge(self):
+        # 1. Unassigned free agent views dashboard: No upcoming schedule, no redundant announcements card
+        eli = CustomUser.objects.create_user(
+            username="eli_walker", password="password123", role="player", is_free_agent=True
+        )
+        self.client.login(username="eli_walker", password="password123")
+        resp_eli = self.client.get(reverse('home'))
+        self.assertEqual(resp_eli.status_code, 200)
+        self.assertNotContains(resp_eli, 'id="seeAllScheduleBtn"')
+        self.assertNotContains(resp_eli, 'id="tabViewUpcoming"')
+
+        # 2. Announcement created -> Sidebar displays alert badge
+        Announcement.objects.create(
+            title="Spring Registration Closes Friday",
+            content="Please get your team dues in.",
+            author=self.admin_user,
+        )
+        resp_badge = self.client.get(reverse('home'))
+        self.assertContains(resp_badge, 'title="1 new announcement"')
+
+        # 3. Rostered player views dashboard: Sees upcoming schedule with 'See All ->' and 'Recent Scores' tab
+        self.team1.players.add(self.player_user)
+        Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now() + timedelta(days=4), location="Diamond 1"
+        )
+        self.client.login(username="player_user", password="password123")
+        resp_rostered = self.client.get(reverse('home'))
+        self.assertEqual(resp_rostered.status_code, 200)
+        self.assertContains(resp_rostered, 'id="seeAllScheduleBtn"')
+        self.assertContains(resp_rostered, 'See All &rarr;')
+        self.assertContains(resp_rostered, 'id="btnTabResults"')
