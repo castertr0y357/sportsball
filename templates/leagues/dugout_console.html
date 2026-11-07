@@ -319,6 +319,27 @@
     </div>
 </div>
 
+<!-- In-Game Quick Substitution Modal -->
+<div id="subModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; max-width:450px; width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
+        <h3 style="margin-top:0; font-size:1.2rem;">🔄 Dugout Quick Substitution</h3>
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:1rem;">
+            Outgoing Player: <strong id="subOutPlayerName" style="color:var(--text);"></strong>
+        </p>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">
+                Select Incoming Bench Player:
+            </label>
+            <select id="subIncomingSelect" class="form-input" style="width:100%; font-size:0.9rem; padding:0.5rem; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px;">
+            </select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeSubModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmSub()">Confirm Sub</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const GAME_ID = {{ game.id }};
 const ACTION_URL = "{% url 'dugout_action' game.id %}";
@@ -472,6 +493,54 @@ function playCurrentWalkup() {
     }, durationSec * 1000);
 }
 
+
+let currentSubOutEntryId = null;
+let currentSubContainerId = null;
+
+function openSubModal(outEntryId, outPlayerName, containerId) {
+    currentSubOutEntryId = outEntryId;
+    currentSubContainerId = containerId;
+    document.getElementById('subOutPlayerName').textContent = outPlayerName;
+
+    const select = document.getElementById('subIncomingSelect');
+    select.innerHTML = '';
+
+    const isTeam1 = containerId.includes('team1');
+    const lineup = isTeam1 ? (gameState.team1_lineup || []) : (gameState.team2_lineup || []);
+    const bench = lineup.filter(p => !p.is_present);
+
+    if (!bench.length) {
+        select.innerHTML = '<option value="">-- No bench players available --</option>';
+    } else {
+        bench.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.entry_id;
+            opt.textContent = `${p.name} ${p.jersey ? '#' + p.jersey : ''}`;
+            select.appendChild(opt);
+        });
+    }
+
+    const modal = document.getElementById('subModal');
+    modal.style.display = 'flex';
+}
+
+function closeSubModal() {
+    document.getElementById('subModal').style.display = 'none';
+}
+
+function confirmSub() {
+    const inEntryId = document.getElementById('subIncomingSelect').value;
+    if (!inEntryId) {
+        alert("Please select a bench player to substitute in.");
+        return;
+    }
+    closeSubModal();
+    sendAction('substitute_player', {
+        out_entry_id: currentSubOutEntryId,
+        in_entry_id: inEntryId
+    });
+}
+
 function renderLineup(containerId, lineup, currentBatterId) {
     const container = document.getElementById(containerId);
     if (!lineup || !lineup.length) {
@@ -494,7 +563,8 @@ function renderLineup(containerId, lineup, currentBatterId) {
                     <span><strong>${idx + 1}.</strong> ${item.name} ${jersey}</span>
                     ${songBadge}
                 </div>
-                <div style="display:flex; gap:0.25rem;">
+                <div style="display:flex; gap:0.25rem; align-items:center;">
+                    <button type="button" class="btn btn-sm btn-secondary" style="font-size:0.75rem; padding:0.2rem 0.45rem;" onclick="openSubModal(${item.entry_id}, '${item.name.replace(/'/g, "\\'")}', '${containerId}')" title="Substitute Player">Sub</button>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('move_lineup', {entry_id: ${item.entry_id}, direction: 'up'})">&uarr;</button>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('move_lineup', {entry_id: ${item.entry_id}, direction: 'down'})">&darr;</button>
                 </div>

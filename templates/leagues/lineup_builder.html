@@ -16,6 +16,9 @@
         </p>
     </div>
     <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a href="{% url 'game_lineup_print' game.id team.id %}" target="_blank" class="btn btn-secondary" title="Open print-ready umpire & dugout card">
+            🖨️ Print Dugout Card
+        </a>
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary">&larr; Back to Game Center</a>
         {% if can_score %}
             <a href="{% url 'dugout_console' game.id %}" class="btn btn-secondary" title="Open live dugout scoreboard console">Dugout Console &rarr;</a>
@@ -23,7 +26,7 @@
     </div>
 </div>
 
-<!-- Player Attendance & RSVP Summary Card -->
+<!-- Player Attendance & Coach Lineup Automation Bar -->
 <div class="card" style="margin-bottom:1.5rem; background:var(--surface-alt); border:1px solid var(--border); padding:1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
         <div>
@@ -49,20 +52,70 @@
                 {% endif %}
             </div>
         </div>
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-            <!-- 1-Click Autofill from RSVPs Form -->
-            <form method="post" style="margin:0;">
+
+        <!-- 1-Click Fast Lineup Tools -->
+        <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+            <form method="post" style="margin:0; display:inline;">
                 {% csrf_token %}
-                <button type="submit" name="action" value="autofill_rsvps" class="btn btn-secondary btn-sm" title="Automatically put all Confirmed In players at the top of the batting order and bench absent players">
+                <button type="submit" name="action" value="copy_previous_lineup" class="btn btn-secondary btn-sm" title="Copy batting order and fielding positions from last game">
+                    ⚡ Copy from Last Game
+                </button>
+            </form>
+            <form method="post" style="margin:0; display:inline;">
+                {% csrf_token %}
+                <button type="submit" name="action" value="autofill_rsvps" class="btn btn-secondary btn-sm" title="Put confirmed players at the top and bench absent players">
                     &#9889; Autofill from RSVPs
                 </button>
             </form>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="copyLineupCard()" title="Copy formatted lineup card to clipboard for team group chat">
-                &#128203; Share Lineup Card
+            <form method="post" style="margin:0; display:inline;">
+                {% csrf_token %}
+                <button type="submit" name="action" value="save_as_default" class="btn btn-secondary btn-sm" title="Save this lineup as the master template for future games">
+                    💾 Save as Master
+                </button>
+            </form>
+            {% if has_saved_default %}
+            <form method="post" style="margin:0; display:inline;">
+                {% csrf_token %}
+                <button type="submit" name="action" value="load_default_lineup" class="btn btn-secondary btn-sm" title="Load your team's saved master template">
+                    📂 Load Master
+                </button>
+            </form>
+            {% endif %}
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyLineupCard()" title="Copy formatted lineup to clipboard">
+                &#128203; Share
             </button>
         </div>
     </div>
 </div>
+
+<!-- Co-Ed Rule Compliance Banner -->
+{% if coed_status.has_gender_data %}
+    {% if coed_status.is_alternating %}
+        <div class="card" style="margin-bottom:1.5rem; background:rgba(16,185,129,0.08); border:1px solid #10b981; padding:0.75rem 1rem; display:flex; align-items:center; gap:0.6rem;">
+            <span style="font-size:1.25rem;">🟢</span>
+            <div>
+                <strong style="color:#059669; font-size:0.92rem;">Co-Ed Batting Order: Balanced / Compliant</strong>
+                <span style="display:block; font-size:0.82rem; color:var(--text-muted);">
+                    Active batting order alternates genders cleanly ({{ coed_status.male_count }} Male, {{ coed_status.female_count }} Female).
+                </span>
+            </div>
+        </div>
+    {% else %}
+        <div class="card" style="margin-bottom:1.5rem; background:rgba(245,158,11,0.08); border:1px solid #f59e0b; padding:0.75rem 1rem; display:flex; align-items:center; gap:0.6rem;">
+            <span style="font-size:1.25rem;">⚠️</span>
+            <div>
+                <strong style="color:#d97706; font-size:0.92rem;">Co-Ed Batting Order Notice: Consecutive Male Batters</strong>
+                <span style="display:block; font-size:0.82rem; color:var(--text-muted);">
+                    Consecutive male batters detected at order spots:
+                    {% for p1, p2 in coed_status.consecutive_male_pairs %}
+                        <strong>#{{ p1 }} &amp; #{{ p2 }}</strong>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}.
+                    Use the <strong>&#9650;</strong> and <strong>&#9660;</strong> buttons to alternate spots if required by league rules.
+                </span>
+            </div>
+        </div>
+    {% endif %}
+{% endif %}
 
 <!-- Main Lineup & Rotation Form -->
 <form method="post" id="lineupForm">
@@ -74,7 +127,7 @@
             <div>
                 <h2 style="margin:0;">Batting Order &amp; Defensive Rotations</h2>
                 <p style="margin:0.2rem 0 0; font-size:0.88rem; color:var(--text-muted);">
-                    Set batting order, primary/multi-position tags (e.g. <code>SS / P</code>), and defensive positions per inning.
+                    Use <strong>&#9650;</strong> / <strong>&#9660;</strong> to reorder. Set primary/multi-position tags (e.g. <code>SS / P</code>) and defensive rotations.
                 </p>
             </div>
             <button type="submit" class="btn btn-accent" style="font-weight:700;">
@@ -86,22 +139,29 @@
             <table id="lineupTable">
                 <thead>
                     <tr>
-                        <th style="width:70px; text-align:center;">Order</th>
+                        <th style="width:85px; text-align:center;">Order</th>
                         <th>Player</th>
-                        <th style="min-width:140px;">Primary / Multi-Position</th>
+                        <th style="min-width:130px;">Primary Position</th>
                         {% for period in periods %}
                             <th style="min-width:90px; text-align:center; font-size:0.82rem;">{{ period }}</th>
                         {% endfor %}
-                        <th style="width:80px; text-align:center;">Playing</th>
+                        <th style="width:90px; text-align:center; font-size:0.82rem;" title="Fielding vs Bench innings">Fair Play</th>
+                        <th style="width:70px; text-align:center;">Playing</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for e in entries %}
-                    <tr class="{% if not e.is_present %}lineup-absent-row{% endif %}" id="row_{{ e.id }}">
-                        <!-- Order Input -->
-                        <td style="text-align:center;">
-                            <input type="number" name="order_{{ e.id }}" value="{{ e.batting_order }}" min="1" max="99"
-                                class="lineup-order-input" style="width:55px; text-align:center; padding:0.35rem 0.2rem; font-weight:700;">
+                    <tr class="{% if not e.is_present %}lineup-absent-row{% endif %}" id="row_{{ e.id }}" data-id="{{ e.id }}">
+                        <!-- 1-Tap Reorder & Order Input -->
+                        <td style="text-align:center; white-space:nowrap;">
+                            <div style="display:flex; align-items:center; justify-content:center; gap:3px;">
+                                <input type="number" name="order_{{ e.id }}" value="{{ e.batting_order }}" min="1" max="99"
+                                    class="lineup-order-input" style="width:42px; text-align:center; padding:0.25rem 0.15rem; font-weight:700; border:1px solid var(--border); border-radius:4px;">
+                                <div style="display:flex; flex-direction:column; gap:2px;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="padding:1px 4px; font-size:8px; line-height:10px; height:13px;" onclick="moveLineupRow(this, -1)" title="Move Up">&#9650;</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" style="padding:1px 4px; font-size:8px; line-height:10px; height:13px;" onclick="moveLineupRow(this, 1)" title="Move Down">&#9660;</button>
+                                </div>
+                            </div>
                         </td>
 
                         <!-- Player Info & RSVP Pill -->
@@ -109,6 +169,7 @@
                             <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
                                 <strong>{{ e.player.display_name }}</strong>
                                 {% if e.player.jersey_number %}<span class="badge">#{{ e.player.jersey_number }}</span>{% endif %}
+                                {% if e.player.gender %}<span class="badge" style="font-size:0.7rem; opacity:0.8;">{{ e.player.gender }}</span>{% endif %}
                                 {% if e.rsvp %}
                                     {% if e.rsvp.response == 'yes' %}
                                         <span class="badge badge-success" style="font-size:0.75rem;">&#10003; In</span>
@@ -142,7 +203,7 @@
                             <select name="rotation_{{ e.id }}_{{ forloop.counter }}" style="padding:0.3rem 0.25rem; font-size:0.8rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); width:100%; max-width:85px;">
                                 <option value="">--</option>
                                 {% for pos in available_positions %}
-                                    <option value="{{ pos }}" {% if e.rotation_dict|default:None and e.rotation_dict|slice:p_num == pos %}selected{% endif %}>
+                                    <option value="{{ pos }}" {% if e.rotation_dict and e.rotation_dict|slice:p_num == pos %}selected{% endif %}>
                                         {{ pos }}
                                     </option>
                                 {% endfor %}
@@ -150,6 +211,13 @@
                             {% endwith %}
                         </td>
                         {% endfor %}
+
+                        <!-- Fair-Play Time -->
+                        <td style="text-align:center; white-space:nowrap;">
+                            <span class="badge" style="font-size:0.75rem;" title="{{ e.fielding_innings }} fielding, {{ e.bench_innings }} bench">
+                                {{ e.fielding_innings }}F / {{ e.bench_innings }}B
+                            </span>
+                        </td>
 
                         <!-- In Lineup / Present Checkbox -->
                         <td style="text-align:center;">
@@ -164,7 +232,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
             <div style="font-size:0.85rem; color:var(--text-muted);">
-                💡 Tip: Players marked absent or un-checked will be skipped during game-day batting order advancement.
+                💡 Tip: Click <strong>&#9650;</strong> or <strong>&#9660;</strong> to reorder players without typing. Changes auto-renumber and save with the Save button.
             </div>
             <button type="submit" class="btn btn-accent btn-lg" style="font-weight:700;">
                 &#128190; Save Lineup &amp; Rotations
@@ -185,6 +253,26 @@
 </datalist>
 
 <script>
+function moveLineupRow(btn, direction) {
+    const row = btn.closest('tr');
+    const tbody = row.parentNode;
+    if (direction === -1 && row.previousElementSibling) {
+        tbody.insertBefore(row, row.previousElementSibling);
+    } else if (direction === 1 && row.nextElementSibling) {
+        tbody.insertBefore(row.nextElementSibling, row);
+    }
+    // Reindex order inputs
+    const inputs = tbody.querySelectorAll('.lineup-order-input');
+    inputs.forEach((input, index) => {
+        input.value = index + 1;
+    });
+    // Brief visual flash to confirm move
+    row.style.transition = 'background-color 0.2s';
+    const oldBg = row.style.backgroundColor;
+    row.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+    setTimeout(() => { row.style.backgroundColor = oldBg; }, 350);
+}
+
 function copyLineupCard() {
     const rows = document.querySelectorAll('#lineupTable tbody tr');
     let text = "{{ team.name }} Lineup vs {{ opponent.name }}\n";

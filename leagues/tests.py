@@ -1093,3 +1093,222 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(g2.location, "Court 1")
         self.assertEqual(g1.week_number, 2)
         self.assertEqual(g2.week_number, 1)
+
+    def test_coach_roster_inline_update_and_drop_player(self):
+        # Add coach_user and player_user to team1
+        self.team1.players.add(self.coach_user, self.player_user)
+        self.client.login(username="coach_user", password="password123")
+
+        # 1. Update jersey and preferred position
+        resp_update = self.client.post(reverse('manage_roster_player', args=[self.team1.id]), {
+            'action': 'update_player',
+            'player_id': self.player_user.id,
+            'jersey_number': 42,
+            'preferred_position': 'SS / P',
+            'gender': 'M',
+        })
+        self.assertEqual(resp_update.status_code, 302)
+        self.player_user.refresh_from_db()
+        self.assertEqual(self.player_user.jersey_number, 42)
+        self.assertEqual(self.player_user.preferred_position, 'SS / P')
+        self.assertEqual(self.player_user.gender, 'M')
+
+        # 2. Cannot drop captain
+        resp_drop_cap = self.client.post(reverse('manage_roster_player', args=[self.team1.id]), {
+            'action': 'remove_player',
+            'player_id': self.coach_user.id,
+        })
+        self.assertTrue(self.team1.players.filter(id=self.coach_user.id).exists())
+
+        # 3. Drop player_user
+        resp_drop = self.client.post(reverse('manage_roster_player', args=[self.team1.id]), {
+            'action': 'remove_player',
+            'player_id': self.player_user.id,
+        })
+        self.assertFalse(self.team1.players.filter(id=self.player_user.id).exists())
+
+        # 4. Unauthorized user cannot manage roster
+        self.client.login(username="player_user", password="password123")
+        self.team1.players.add(self.player_user)
+        resp_unauth = self.client.post(reverse('manage_roster_player', args=[self.team1.id]), {
+            'action': 'remove_player',
+            'player_id': self.coach_user.id,
+        })
+        self.assertEqual(resp_unauth.status_code, 302)
+        self.assertTrue(self.team1.players.filter(id=self.coach_user.id).exists())
+
+    def test_coach_quick_add_church_member_to_roster(self):
+        new_member = CustomUser.objects.create_user(
+            username="church_member_tim",
+            email="tim@gracefellowship.org",
+            first_name="Tim",
+            last_name="Keller",
+            church=self.church
+        )
+        self.client.login(username="coach_user", password="password123")
+
+        resp = self.client.post(reverse('manage_roster_player', args=[self.team1.id]), {
+            'action': 'quick_add_player',
+            'player_id': new_member.id,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(self.team1.players.filter(id=new_member.id).exists())
+
+    def test_lineup_builder_copy_last_game_and_default_templates(self):
+        self.team1.players.add(self.coach_user)
+        self.team1.players.add(self.player_user)
+        self.client.login(username="coach_user", password="password123")
+
+        # Game 1: set batting order and positions
+        g1 = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() - timedelta(days=7),
+            location="Gym",
+            status="completed"
+        )
+        g1.ensure_lineups_initialized()
+        e1_coach = g1.lineup_entries.get(team=self.team1, player=self.coach_user)
+        e1_coach.batting_order = 1
+        e1_coach.field_position = "SS"
+        e1_coach.save()
+
+        e1_player = g1.lineup_entries.get(team=self.team1, player=self.player_user)
+        e1_player.batting_order = 2
+        e1_player.field_position = "1B"
+        e1_player.save()
+
+        # Save Game 1 lineup as master default
+        resp_save_def = self.client.post(reverse('game_lineup_builder', args=[g1.id, self.team1.id]), {
+            'action': 'save_as_default'
+        })
+        self.assertEqual(resp_save_def.status_code, 302)
+        self.team1.refresh_from_db()
+        self.assertIn('entries', self.team1.default_lineup)
+
+        # Game 2: copy previous lineup
+        g2 = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() + timedelta(days=2),
+            location="Gym",
+            status="scheduled"
+        )
+        g2.ensure_lineups_initialized()
+
+        resp_copy = self.client.post(reverse('game_lineup_builder', args=[g2.id, self.team1.id]), {
+            'action': 'copy_previous_lineup'
+        })
+        self.assertEqual(resp_copy.status_code, 302)
+
+        e2_coach = g2.lineup_entries.get(team=self.team1, player=self.coach_user)
+        e2_player = g2.lineup_entries.get(team=self.team1, player=self.player_user)
+        self.assertEqual(e2_coach.batting_order, 1)
+        self.assertEqual(e2_coach.field_position, "SS")
+        self.assertEqual(e2_player.batting_order, 2)
+        self.assertEqual(e2_player.field_position, "1B")
+
+    def test_coed_compliance_and_print_lineup_card(self):
+        player_female = CustomUser.objects.create_user(
+            username="sarah_player",
+            email="sarah@gracefellowship.org",
+            first_name="Sarah",
+            gender="F",
+            church=self.church
+        )
+        self.coach_user.gender = "M"
+        self.coach_user.save()
+        self.player_user.gender = "M"
+        self.player_user.save()
+
+        self.team1.players.add(self.coach_user, self.player_user, player_female)
+
+        g = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() + timedelta(days=2),
+            location="Diamond #1",
+            status="scheduled"
+        )
+        g.ensure_lineups_initialized()
+
+        # Set order: coach (M) spot 1, player (M) spot 2 -> consecutive male notice
+        e_coach = g.lineup_entries.get(team=self.team1, player=self.coach_user)
+        e_coach.batting_order = 1
+        e_coach.save()
+
+        e_player = g.lineup_entries.get(team=self.team1, player=self.player_user)
+        e_player.batting_order = 2
+        e_player.save()
+
+        self.client.login(username="coach_user", password="password123")
+        resp_builder = self.client.get(reverse('game_lineup_builder', args=[g.id, self.team1.id]))
+        self.assertEqual(resp_builder.status_code, 200)
+        coed = resp_builder.context['coed_status']
+        self.assertFalse(coed['is_alternating'])
+        self.assertEqual(coed['consecutive_male_pairs'], [(1, 2)])
+
+        # Test official printable lineup card
+        resp_print = self.client.get(reverse('game_lineup_print', args=[g.id, self.team1.id]))
+        self.assertEqual(resp_print.status_code, 200)
+        self.assertContains(resp_print, "Official Starting Lineup")
+        self.assertContains(resp_print, self.coach_user.display_name)
+
+    def test_dugout_live_in_game_substitution(self):
+        player_sub = CustomUser.objects.create_user(
+            username="sub_player",
+            email="sub@gracefellowship.org",
+            first_name="Marcus",
+            last_name="Sub",
+            jersey_number=99,
+            church=self.church
+        )
+        self.team1.players.add(self.coach_user, player_sub)
+
+        game = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now(),
+            location="Diamond #2",
+            status="in_progress",
+            current_inning=2
+        )
+        game.ensure_lineups_initialized()
+
+        e_coach = game.lineup_entries.get(team=self.team1, player=self.coach_user)
+        e_coach.batting_order = 1
+        e_coach.field_position = "Shortstop"
+        e_coach.is_present = True
+        e_coach.save()
+
+        e_sub = game.lineup_entries.get(team=self.team1, player=player_sub)
+        e_sub.batting_order = 2
+        e_sub.field_position = "Bench"
+        e_sub.is_present = False
+        e_sub.save()
+
+        game.current_batter = self.coach_user
+        game.save()
+
+        # Coach substitutes Marcus in for Coach
+        self.client.login(username="coach_user", password="password123")
+        resp = self.client.post(reverse('dugout_action', args=[game.id]), json.dumps({
+            'action': 'substitute_player',
+            'out_entry_id': e_coach.id,
+            'in_entry_id': e_sub.id,
+        }), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+
+        e_coach.refresh_from_db()
+        e_sub.refresh_from_db()
+        game.refresh_from_db()
+
+        self.assertFalse(e_coach.is_present)
+        self.assertTrue(e_sub.is_present)
+        self.assertEqual(e_sub.batting_order, 1)
+        self.assertEqual(e_sub.field_position, "Shortstop")
+        self.assertEqual(game.current_batter, player_sub)

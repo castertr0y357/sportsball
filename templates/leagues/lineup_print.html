@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ team.name }} Lineup Card - vs {{ opponent.name }}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #111827;
+            background: #f9fafb;
+            margin: 0;
+            padding: 1.5rem;
+        }
+        .lineup-card-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 1.5rem;
+            border: 2px solid #111827;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .team-title {
+            margin: 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .game-meta {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+        .print-btn-bar {
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: #2563eb;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #1f2937;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        th, td {
+            border: 1px solid #9ca3af;
+            padding: 0.45rem 0.5rem;
+            text-align: left;
+        }
+        th {
+            background: #f3f4f6;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            letter-spacing: 0.05em;
+        }
+        .center {
+            text-align: center;
+        }
+        .sub-box {
+            font-size: 0.75rem;
+            color: #6b7280;
+            min-height: 18px;
+        }
+        .signatures-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px dashed #9ca3af;
+            font-size: 0.85rem;
+        }
+        .sig-box {
+            width: 45%;
+            border-top: 1px solid #111827;
+            padding-top: 0.25rem;
+            margin-top: 2rem;
+            text-align: center;
+            font-weight: 600;
+        }
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+            }
+            .lineup-card-container {
+                border: 2px solid #000;
+                box-shadow: none;
+                padding: 0.5rem;
+                max-width: 100%;
+            }
+            .print-btn-bar {
+                display: none !important;
+            }
+            th {
+                background: #eee !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            table, th, td {
+                border-color: #000 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="lineup-card-container">
+    <div class="print-btn-bar">
+        <a href="{% url 'game_lineup_builder' game.id team.id %}" class="btn btn-secondary">&larr; Back to Lineup Builder</a>
+        <button onclick="window.print()" class="btn">🖨️ Print Official Lineup Card</button>
+    </div>
+
+    <div class="header-bar">
+        <div>
+            <h1 class="team-title">{{ team.name }}</h1>
+            <p class="game-meta">
+                {% if team.church %}<strong>{{ team.church.name }}</strong> &bull; {% endif %}
+                Sport: {{ sport|title }} &bull; Uniform: {{ team.team_color|default:"Team" }}
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-weight: 700; font-size: 1.1rem;">vs {{ opponent.name }}</div>
+            <p class="game-meta">
+                {{ game.date|date:"D, M j, Y @ g:i A" }}<br>
+                Location: <strong>{{ game.location }}</strong>
+            </p>
+        </div>
+    </div>
+
+    <!-- Official Starting Batting Order -->
+    <h3 style="margin: 0 0 0.4rem 0; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em;">
+        Official Starting Lineup
+    </h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 35px;" class="center">#</th>
+                <th style="width: 50px;" class="center">Jrsy</th>
+                <th>Player Name</th>
+                <th style="width: 45px;" class="center">Gen</th>
+                <th style="width: 110px;">Start Pos</th>
+                {% for p_hdr in period_headers %}
+                    <th style="width: 40px;" class="center">{{ p_hdr }}</th>
+                {% endfor %}
+                <th style="width: 130px;">Substitutions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in active_lineup %}
+            <tr>
+                <td class="center" style="font-weight: 700;">{{ forloop.counter }}</td>
+                <td class="center" style="font-weight: 700;">
+                    {% if e.player.jersey_number %}#{{ e.player.jersey_number }}{% else %}-{% endif %}
+                </td>
+                <td>
+                    <strong>{{ e.player.display_name }}</strong>
+                    {% if e.player == team.captain %} <em>(C)</em>{% endif %}
+                </td>
+                <td class="center">{{ e.player.gender|default:"-" }}</td>
+                <td><strong>{{ e.field_position|default:"-" }}</strong></td>
+                {% for pos in e.period_positions %}
+                    <td class="center" style="font-size: 0.8rem; color: #374151;">
+                        {{ pos }}
+                    </td>
+                {% endfor %}
+                <td class="sub-box"></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="13" class="center" style="padding: 1rem; color: #6b7280;">
+                    No players marked present in starting lineup.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Available Substitutes / Bench -->
+    <h3 style="margin: 1rem 0 0.4rem 0; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em;">
+        Available Substitutes &amp; Bench Roster
+    </h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 50px;" class="center">Jrsy</th>
+                <th>Player Name</th>
+                <th style="width: 45px;" class="center">Gen</th>
+                <th>Preferred Positions</th>
+                <th>Status / Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in bench_substitutes %}
+            <tr>
+                <td class="center">{% if b.player.jersey_number %}#{{ b.player.jersey_number }}{% else %}-{% endif %}</td>
+                <td>{{ b.player.display_name }}</td>
+                <td class="center">{{ b.player.gender|default:"-" }}</td>
+                <td>{{ b.player.preferred_position|default:b.field_position|default:"Bench / Utility" }}</td>
+                <td style="font-size: 0.8rem; color: #6b7280;">Available Substitute</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="center" style="color: #6b7280; font-size: 0.85rem;">
+                    All rostered players are in the starting lineup.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="signatures-row">
+        <div class="sig-box">
+            Team Manager / Coach Signature
+        </div>
+        <div class="sig-box">
+            Home Plate Umpire / Referee Signature
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

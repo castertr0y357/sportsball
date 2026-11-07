@@ -89,39 +89,87 @@ function shareTeamInvite() {
 
 <div class="grid grid-2">
     <div class="card">
-        <h2>Team Roster ({{ team.players.count }} / {{ team.season.max_roster_size }})</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+            <h2 style="margin:0;">Team Roster ({{ team.players.count }} / {{ team.season.max_roster_size }})</h2>
+            {% if is_captain_or_admin %}
+                <span class="badge badge-primary" style="font-size:0.75rem;">Coach Roster Tools Enabled</span>
+            {% endif %}
+        </div>
+
         {% if team.players.all %}
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th>
+                            <th style="width:65px;">#</th>
                             <th>Player</th>
-                            <th>Role</th>
-                            <th>Home Church</th>
+                            {% if is_captain_or_admin %}
+                                <th style="width:70px;">Gender</th>
+                                <th style="min-width:110px;">Position</th>
+                            {% endif %}
+                            <th>Church</th>
                             {% if is_captain_or_admin %}
                                 <th>Waiver</th>
+                                <th style="text-align:right;">Action</th>
                             {% endif %}
                         </tr>
                     </thead>
                     <tbody>
                         {% for p in team.players.all %}
-                        <tr>
-                            <td>{% if p.jersey_number != None %}#{{ p.jersey_number }}{% else %}-{% endif %}</td>
+                        <tr id="roster_row_{{ p.id }}">
                             <td>
-                                <a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a>
-                                {% if p == team.captain %}<span class="badge badge-primary">Captain</span>{% endif %}
-                            </td>
-                            <td>{{ p.get_role_display }}</td>
-                            <td>{{ p.church.name|default:"-" }}</td>
-                            {% if is_captain_or_admin %}
-                            <td>
-                                {% if p.waiver_signed %}
-                                    <span class="badge badge-success">&#10003; Signed</span>
+                                {% if is_captain_or_admin %}
+                                    <input type="number" name="jersey_{{ p.id }}" value="{{ p.jersey_number|default_if_none:'' }}"
+                                        style="width:55px; padding:0.25rem 0.35rem; font-size:0.85rem; border:1px solid var(--border); border-radius:4px; text-align:center;"
+                                        title="Auto-saves on change" onchange="savePlayerProfile({{ p.id }})">
                                 {% else %}
-                                    <span class="badge badge-warning">Pending</span>
+                                    {% if p.jersey_number != None %}#{{ p.jersey_number }}{% else %}-{% endif %}
                                 {% endif %}
                             </td>
+                            <td>
+                                <a href="{% url 'player_detail' p.id %}"><strong>{{ p.display_name }}</strong></a>
+                                {% if p == team.captain %}
+                                    <span class="badge badge-primary" style="font-size:0.7rem; margin-left:0.25rem;">Captain</span>
+                                {% endif %}
+                                <span id="save_pill_{{ p.id }}" style="display:none; font-size:0.7rem; color:#10b981; margin-left:0.35rem;">&#10003; saved</span>
+                            </td>
+                            {% if is_captain_or_admin %}
+                                <td>
+                                    <select name="gender_{{ p.id }}" style="padding:0.25rem; font-size:0.82rem; border:1px solid var(--border); border-radius:4px;" onchange="savePlayerProfile({{ p.id }})">
+                                        <option value="" {% if not p.gender %}selected{% endif %}>-</option>
+                                        <option value="M" {% if p.gender == 'M' %}selected{% endif %}>M</option>
+                                        <option value="F" {% if p.gender == 'F' %}selected{% endif %}>F</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" name="pos_{{ p.id }}" value="{{ p.preferred_position|default:'' }}" placeholder="e.g. SS / P"
+                                        style="width:110px; padding:0.25rem 0.45rem; font-size:0.82rem; border:1px solid var(--border); border-radius:4px;"
+                                        title="Auto-saves on change" onchange="savePlayerProfile({{ p.id }})">
+                                </td>
+                            {% endif %}
+                            <td>{{ p.church.name|default:"-" }}</td>
+                            {% if is_captain_or_admin %}
+                                <td>
+                                    {% if p.waiver_signed %}
+                                        <span class="badge badge-success" style="font-size:0.75rem;">&#10003; Signed</span>
+                                    {% else %}
+                                        <span class="badge badge-warning" style="font-size:0.75rem;">Pending</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align:right; white-space:nowrap;">
+                                    {% if p != team.captain %}
+                                        <form method="post" action="{% url 'manage_roster_player' team.id %}" style="display:inline;" onsubmit="return confirm('Remove {{ p.display_name|escapejs }} from the {{ team.name|escapejs }} roster?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="remove_player">
+                                            <input type="hidden" name="player_id" value="{{ p.id }}">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="color:#ef4444; padding:0.2rem 0.5rem; font-size:0.75rem;" title="Drop player from team roster">
+                                                &times; Drop
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <span style="font-size:0.75rem; color:var(--text-muted);">&mdash;</span>
+                                    {% endif %}
+                                </td>
                             {% endif %}
                         </tr>
                         {% endfor %}
@@ -131,7 +179,50 @@ function shareTeamInvite() {
         {% else %}
             <p>No players on the roster yet.</p>
         {% endif %}
+
+        {% if is_captain_or_admin and available_church_members %}
+            <form method="post" action="{% url 'manage_roster_player' team.id %}" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:1.25rem; padding-top:0.85rem; border-top:1px solid var(--border);">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="quick_add_player">
+                <span style="font-size:0.85rem; font-weight:600; white-space:nowrap;">⚡ Add Church Member:</span>
+                <select name="player_id" class="form-input" style="font-size:0.85rem; flex:1; min-width:180px;" required>
+                    <option value="">-- Select Member --</option>
+                    {% for m in available_church_members %}
+                        <option value="{{ m.id }}">{{ m.display_name }} ({{ m.email }})</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-accent" style="white-space:nowrap;">+ Add to Team</button>
+            </form>
+        {% endif %}
     </div>
+
+<script>
+function savePlayerProfile(playerId) {
+    const jersey = document.querySelector(`input[name="jersey_${playerId}"]`).value;
+    const pos = document.querySelector(`input[name="pos_${playerId}"]`).value;
+    const gender = document.querySelector(`select[name="gender_${playerId}"]`).value;
+    const pill = document.getElementById(`save_pill_${playerId}`);
+
+    const formData = new FormData();
+    formData.append('action', 'update_player');
+    formData.append('player_id', playerId);
+    formData.append('jersey_number', jersey);
+    formData.append('preferred_position', pos);
+    formData.append('gender', gender);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch("{% url 'manage_roster_player' team.id %}", {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    }).then(res => res.json()).then(data => {
+        if (pill) {
+            pill.style.display = 'inline';
+            setTimeout(() => { pill.style.display = 'none'; }, 2000);
+        }
+    }).catch(err => console.error("Error updating player profile:", err));
+}
+</script>
 
     <div class="card">
         <h2>Team Schedule &amp; Results</h2>

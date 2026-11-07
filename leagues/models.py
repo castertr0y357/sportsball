@@ -252,6 +252,11 @@ class Team(models.Model):
     )
     team_color = models.CharField(max_length=50, blank=True, default='Navy Blue')
     dues_paid = models.BooleanField(default=False, help_text="Has team registration fee been paid?")
+    default_lineup = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Saved default lineup template (batting order and positions)"
+    )
     invite_code = models.CharField(
         max_length=32,
         unique=True,

@@ -17,11 +17,13 @@ urlpatterns = [
     path('seasons/<int:season_id>/playoffs/advance/', views.advance_playoffs_to_final, name='advance_playoffs_to_final'),
     path('registrations/<int:reg_id>/assign/', views.assign_registration, name='assign_registration'),
     path('teams/<int:team_id>/', views.team_detail, name='team_detail'),
+    path('teams/<int:team_id>/roster/manage/', views.manage_roster_player, name='manage_roster_player'),
     path('teams/<int:team_id>/join/', views.join_team, name='join_team'),
     path('teams/join/<str:invite_code>/', views.join_team_by_invite, name='join_team_invite'),
     path('games/<int:game_id>/', views.game_detail, name='game_detail'),
     path('games/<int:game_id>/rsvp/', views.game_rsvp, name='game_rsvp'),
     path('games/<int:game_id>/lineup/<int:team_id>/', views.game_lineup_builder, name='game_lineup_builder'),
+    path('games/<int:game_id>/lineup/<int:team_id>/print/', views.game_lineup_print, name='game_lineup_print'),
     path('games/<int:game_id>/score/', views.record_game_score, name='record_game_score'),
     path('games/<int:game_id>/stats/add/', views.add_game_stat, name='add_game_stat'),
     # Simplified GameChanger: Single-Operator Dugout Console & Public GameCast

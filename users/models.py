@@ -27,6 +27,13 @@ class CustomUser(AbstractUser):
     phone = models.CharField(max_length=30, blank=True)
     emergency_contact_name = models.CharField(max_length=120, blank=True)
     emergency_contact_phone = models.CharField(max_length=30, blank=True)
+    GENDER_CHOICES = [
+        ('M', 'Male'),
+        ('F', 'Female'),
+        ('O', 'Other / Unspecified'),
+    ]
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, default='')
+    preferred_position = models.CharField(max_length=50, blank=True, help_text="e.g. Shortstop, 1st Base, Setter")
     jersey_number = models.PositiveIntegerField(null=True, blank=True)
     bio = models.TextField(blank=True)
     is_free_agent = models.BooleanField(
@@ -100,6 +107,17 @@ class CustomUser(AbstractUser):
         if self.is_overall_commissioner:
             return True
         return league.admin_id == self.id
+
+    def can_manage_team(self, team):
+        if not team or not self.is_authenticated:
+            return False
+        if self.is_overall_commissioner:
+            return True
+        if team.league and self.can_manage_league(team.league):
+            return True
+        if team.church and self.can_manage_church(team.church):
+            return True
+        return team.captain_id == self.id
 
     @property
     def can_manage_teams(self):

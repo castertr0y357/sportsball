@@ -17,6 +17,7 @@ from stats.models import PlayerGameStat, SPORT_DEFAULT_CATEGORIES
 from stats.forms import PlayerGameStatForm
 from leagues.services.scheduler import ScheduleGeneratorService
 from leagues.services.calendar_feed import generate_ics_feed
+from users.models import CustomUser
 
 
 def league_list(request):
@@ -168,14 +169,15 @@ def team_detail(request, team_id):
     ).select_related('team1', 'team2').order_by('date')
     pending_requests = team.registration_requests.filter(status='pending').select_related('player')
     is_captain_or_admin = (
-        request.user.is_authenticated and (
-            request.user == team.captain or
-            request.user.can_manage_church(team.church) or
-            request.user.can_manage_league(team.league) or
-            request.user.is_league_admin
-        )
+        request.user.is_authenticated and request.user.can_manage_team(team)
     )
     invite_url = team.get_invite_url(request)
+
+    available_church_members = []
+    if is_captain_or_admin and team.church:
+        available_church_members = list(
+            team.church.members.exclude(id__in=team.players.values_list('id', flat=True)).order_by('first_name', 'last_name')
+        )
 
     return render(request, 'leagues/team_detail.html', {
         'team': team,
@@ -183,7 +185,96 @@ def team_detail(request, team_id):
         'pending_requests': pending_requests,
         'is_captain_or_admin': is_captain_or_admin,
         'invite_url': invite_url,
+        'available_church_members': available_church_members,
     })
+
+
+@login_required
+def manage_roster_player(request, team_id):
+    team = get_object_or_404(Team.objects.select_related('league', 'season', 'church'), id=team_id)
+    if not request.user.can_manage_team(team):
+        messages.error(request, f"You do not have permission to manage the roster for {team.name}.")
+        return redirect('team_detail', team_id=team.id)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'update_player':
+            player_id = request.POST.get('player_id')
+            player = get_object_or_404(CustomUser, id=player_id)
+            if not team.players.filter(id=player.id).exists():
+                messages.error(request, f"{player.display_name} is not on this team's roster.")
+                return redirect('team_detail', team_id=team.id)
+
+            jersey_val = request.POST.get('jersey_number', '').strip()
+            pos_val = request.POST.get('preferred_position', '').strip()
+            gender_val = request.POST.get('gender', '').strip()
+
+            if jersey_val and jersey_val.isdigit():
+                player.jersey_number = int(jersey_val)
+            elif jersey_val == '':
+                player.jersey_number = None
+
+            if pos_val:
+                player.preferred_position = pos_val
+
+            if gender_val in ('M', 'F', 'O', ''):
+                player.gender = gender_val
+
+            player.save(update_fields=['jersey_number', 'preferred_position', 'gender'])
+
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'status': 'ok',
+                    'player_id': player.id,
+                    'jersey_number': player.jersey_number,
+                    'preferred_position': player.preferred_position,
+                    'gender': player.gender,
+                })
+            messages.success(request, f"Updated roster profile for {player.display_name}.")
+
+        elif action == 'remove_player':
+            player_id = request.POST.get('player_id')
+            player = get_object_or_404(CustomUser, id=player_id)
+            if player.id == team.captain_id:
+                messages.error(request, "Cannot drop the team captain. Assign a different captain first.")
+            else:
+                team.players.remove(player)
+                GameLineupEntry.objects.filter(team=team, player=player, game__status='scheduled').delete()
+                messages.success(request, f"Removed {player.display_name} from the {team.name} roster.")
+
+        elif action == 'set_captain':
+            player_id = request.POST.get('player_id')
+            player = get_object_or_404(CustomUser, id=player_id)
+            if team.players.filter(id=player.id).exists():
+                team.captain = player
+                team.save(update_fields=['captain'])
+                messages.success(request, f"Assigned {player.display_name} as Team Captain for {team.name}!")
+            else:
+                messages.error(request, "New captain must be on the team roster.")
+
+        elif action == 'quick_add_player':
+            if team.players.count() >= team.season.max_roster_size:
+                messages.error(request, f"Cannot add player: '{team.name}' has reached the roster cap ({team.season.max_roster_size}).")
+            else:
+                player_id = request.POST.get('player_id')
+                player = get_object_or_404(CustomUser, id=player_id)
+                if (team.church and player.church_id == team.church_id) or player.is_free_agent or request.user.can_manage_league(team.league):
+                    team.players.add(player)
+                    SeasonRegistration.objects.update_or_create(
+                        season=team.season,
+                        player=player,
+                        defaults={
+                            'preferred_team': team,
+                            'status': 'approved',
+                            'waiver_agreed': player.waiver_signed,
+                        }
+                    )
+                    messages.success(request, f"⚡ Added {player.display_name} to {team.name} roster!")
+                else:
+                    messages.error(request, f"{player.display_name} is not a member of {team.church.name if team.church else 'this church'}.")
+
+    return redirect('team_detail', team_id=team.id)
 
 
 @login_required
@@ -993,6 +1084,30 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
             if not entry.is_present and game.current_batter_id == entry.player_id:
                 game.advance_to_next_batter()
 
+    elif action == 'substitute_player':
+        out_entry_id = payload.get('out_entry_id')
+        in_entry_id = payload.get('in_entry_id')
+        out_entry = GameLineupEntry.objects.filter(id=out_entry_id, game=game).first()
+        in_entry = GameLineupEntry.objects.filter(id=in_entry_id, game=game).first()
+        if out_entry and in_entry and out_entry.team_id == in_entry.team_id:
+            out_order = out_entry.batting_order
+            out_pos = out_entry.field_position
+            out_entry.is_present = False
+            out_entry.save(update_fields=['is_present'])
+
+            in_entry.batting_order = out_order
+            in_entry.field_position = out_pos
+            in_entry.is_present = True
+            in_entry.save(update_fields=['batting_order', 'field_position', 'is_present'])
+
+            if game.current_batter_id == out_entry.player_id:
+                game.current_batter = in_entry.player
+                trigger_walkup = True
+
+            jersey_out = f"#{out_entry.player.jersey_number} " if out_entry.player.jersey_number else ""
+            jersey_in = f"#{in_entry.player.jersey_number} " if in_entry.player.jersey_number else ""
+            game.log_play(f"[SUB] Inning {game.current_inning}: {jersey_in}{in_entry.player.display_name} in for {jersey_out}{out_entry.player.display_name} (Spot #{out_order}).")
+
     elif action == 'move_lineup':
         entry_id = payload.get('entry_id')
         direction = payload.get('direction', 'up')
@@ -1229,12 +1344,7 @@ def game_lineup_builder(request, game_id, team_id):
         return redirect('game_detail', game_id=game.id)
 
     user = request.user
-    can_manage_lineup = (
-        user == team.captain or
-        user.can_manage_church(team.church) or
-        user.can_manage_league(game.season.league) or
-        user.is_overall_commissioner
-    )
+    can_manage_lineup = user.can_manage_team(team)
     if not can_manage_lineup:
         messages.error(request, f"You do not have permission to manage the lineup for {team.name}.")
         return redirect('game_detail', game_id=game.id)
@@ -1282,6 +1392,70 @@ def game_lineup_builder(request, game_id, team_id):
             messages.success(request, f"⚡ Lineup auto-sorted for {team.name} based on confirmed player RSVPs!")
             return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
 
+        elif action == 'copy_previous_lineup':
+            prev_game = Game.objects.filter(
+                Q(team1=team) | Q(team2=team),
+                season=game.season
+            ).exclude(id=game.id).filter(date__lt=game.date).order_by('-date').first()
+            if not prev_game:
+                prev_game = Game.objects.filter(
+                    Q(team1=team) | Q(team2=team),
+                    season=game.season
+                ).exclude(id=game.id).order_by('-date').first()
+
+            if prev_game:
+                prev_entries = {e.player_id: e for e in prev_game.lineup_entries.filter(team=team)}
+                current_entries = list(game.lineup_entries.filter(team=team))
+                copied_count = 0
+                for ce in current_entries:
+                    if ce.player_id in prev_entries:
+                        pe = prev_entries[ce.player_id]
+                        ce.batting_order = pe.batting_order
+                        ce.field_position = pe.field_position
+                        ce.position_rotations = pe.position_rotations
+                        ce.is_present = pe.is_present
+                        ce.save(update_fields=['batting_order', 'field_position', 'position_rotations', 'is_present'])
+                        copied_count += 1
+                messages.success(request, f"⚡ Copied lineup & rotations from game on {prev_game.date.strftime('%b %d')} for {copied_count} players!")
+            else:
+                messages.warning(request, "No previous game found to copy lineup from.")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+        elif action == 'save_as_default':
+            current_entries = list(game.lineup_entries.filter(team=team).select_related('player'))
+            template_data = []
+            for e in current_entries:
+                template_data.append({
+                    'player_id': e.player_id,
+                    'batting_order': e.batting_order,
+                    'field_position': e.field_position,
+                    'position_rotations': e.position_rotations,
+                    'is_present': e.is_present,
+                })
+            team.default_lineup = {'entries': template_data}
+            team.save(update_fields=['default_lineup'])
+            messages.success(request, f"💾 Saved current lineup as the Master Depth Chart / Template for {team.name}!")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+        elif action == 'load_default_lineup':
+            if team.default_lineup and 'entries' in team.default_lineup:
+                template_map = {item['player_id']: item for item in team.default_lineup['entries']}
+                current_entries = list(game.lineup_entries.filter(team=team))
+                applied = 0
+                for ce in current_entries:
+                    if ce.player_id in template_map:
+                        item = template_map[ce.player_id]
+                        ce.batting_order = item.get('batting_order', ce.batting_order)
+                        ce.field_position = item.get('field_position', ce.field_position)
+                        ce.position_rotations = item.get('position_rotations', ce.position_rotations)
+                        ce.is_present = item.get('is_present', True)
+                        ce.save(update_fields=['batting_order', 'field_position', 'position_rotations', 'is_present'])
+                        applied += 1
+                messages.success(request, f"Applied Master Lineup Template for {applied} players!")
+            else:
+                messages.warning(request, "No Master Lineup Template has been saved yet.")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
         elif action == 'save_lineup':
             entries = list(game.lineup_entries.filter(team=team).select_related('player'))
             for entry in entries:
@@ -1313,11 +1487,55 @@ def game_lineup_builder(request, game_id, team_id):
     rsvps = {r.player_id: r for r in game.rsvps.filter(player__in=team.players.all())}
     for e in entries:
         e.rsvp = rsvps.get(e.player_id)
-        # Pre-populate helper dict for period rotations
         e.rotation_dict = e.position_rotations or {}
+
+    # Co-ed analysis
+    present_entries = [e for e in entries if e.is_present]
+    consecutive_male_pairs = []
+    male_count = sum(1 for e in present_entries if getattr(e.player, 'gender', '') == 'M')
+    female_count = sum(1 for e in present_entries if getattr(e.player, 'gender', '') == 'F')
+
+    for i in range(len(present_entries) - 1):
+        g1 = getattr(present_entries[i].player, 'gender', '')
+        g2 = getattr(present_entries[i+1].player, 'gender', '')
+        if g1 == 'M' and g2 == 'M':
+            consecutive_male_pairs.append((present_entries[i].batting_order, present_entries[i+1].batting_order))
+
+    coed_status = {
+        'male_count': male_count,
+        'female_count': female_count,
+        'has_gender_data': bool(male_count or female_count),
+        'is_alternating': len(consecutive_male_pairs) == 0,
+        'consecutive_male_pairs': consecutive_male_pairs,
+    }
+
+    # Fair play / Playing time per player across periods
+    num_periods = len(periods)
+    for e in entries:
+        rotations = e.position_rotations or {}
+        fielding_innings = 0
+        bench_innings = 0
+        if not e.is_present:
+            bench_innings = num_periods
+        else:
+            if rotations:
+                for p_idx in range(1, num_periods + 1):
+                    pos = rotations.get(str(p_idx), e.field_position)
+                    if pos in ('Bench', '-', '', None):
+                        bench_innings += 1
+                    else:
+                        fielding_innings += 1
+            else:
+                if e.field_position in ('Bench', '-', '', None):
+                    bench_innings = num_periods
+                else:
+                    fielding_innings = num_periods
+        e.fielding_innings = fielding_innings
+        e.bench_innings = bench_innings
 
     rsvp_summary = game.get_team_rsvp_summary(team)
     opponent = game.team2 if team == game.team1 else game.team1
+    has_saved_default = bool(team.default_lineup and team.default_lineup.get('entries'))
 
     return render(request, 'leagues/lineup_builder.html', {
         'game': game,
@@ -1327,6 +1545,57 @@ def game_lineup_builder(request, game_id, team_id):
         'available_positions': available_positions,
         'periods': periods,
         'rsvp_summary': rsvp_summary,
+        'sport': sport,
+        'coed_status': coed_status,
+        'has_saved_default': has_saved_default,
+    })
+
+
+def game_lineup_print(request, game_id, team_id):
+    """Clean, print-optimized umpire and dugout lineup card (RFC/standard format)."""
+    game = get_object_or_404(
+        Game.objects.select_related('season__league', 'team1__church', 'team2__church'),
+        id=game_id
+    )
+    team = get_object_or_404(Team.objects.select_related('church', 'captain', 'season__league'), id=team_id)
+    if team not in (game.team1, game.team2):
+        messages.error(request, f"{team.name} is not in this game.")
+        return redirect('game_detail', game_id=game.id)
+
+    game.ensure_lineups_initialized()
+    opponent = game.team2 if team == game.team1 else game.team1
+
+    entries = list(
+        game.lineup_entries.filter(team=team)
+        .select_related('player')
+        .order_by('batting_order', 'id')
+    )
+    active_lineup = [e for e in entries if e.is_present]
+    bench_substitutes = [e for e in entries if not e.is_present]
+
+    sport = game.season.league.sport if (game.season and game.season.league) else 'softball'
+    if sport in ('softball', 'baseball'):
+        period_headers = [f"Inn {i}" for i in range(1, 8)]
+    elif sport == 'basketball':
+        period_headers = [f"Q{i}" for i in range(1, 5)]
+    elif sport in ('flag_football', 'soccer'):
+        period_headers = ['1st Half', '2nd Half']
+    else:
+        period_headers = ['Set 1', 'Set 2', 'Set 3']
+
+    num_p = len(period_headers)
+    for e in active_lineup:
+        rot = e.position_rotations or {}
+        e.rotation_dict = rot
+        e.period_positions = [rot.get(str(i), e.field_position or '-') for i in range(1, num_p + 1)]
+
+    return render(request, 'leagues/lineup_print.html', {
+        'game': game,
+        'team': team,
+        'opponent': opponent,
+        'active_lineup': active_lineup,
+        'bench_substitutes': bench_substitutes,
+        'period_headers': period_headers,
         'sport': sport,
     })
 
