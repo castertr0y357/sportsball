@@ -765,6 +765,11 @@ def record_game_score(request, game_id):
                         request,
                         f"Reported score: {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name}. Sent to opposing coach for 1-tap confirmation."
                     )
+                    if game.season and game.season.league and game.season.league.discord_webhook_url:
+                        send_discord_notification(
+                            game.season.league.discord_webhook_url,
+                            f"📋 Score Reported: {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name} ({game.season.league.name}). Awaiting opponent confirmation."
+                        )
             else:
                 updated_game = form.save()
                 messages.success(
@@ -956,6 +961,13 @@ def dugout_action(request, game_id):
     )
     if not request.user.can_score_game(game):
         return JsonResponse({'error': 'Permission denied: you cannot score this match'}, status=403)
+
+    if game.status in ['completed', 'disputed'] or game.score_confirmed:
+        return JsonResponse({
+            'status': 'already_finalized',
+            'error': 'This game was already marked final or disputed online. Stale offline actions were not applied.',
+            'is_locked': True,
+        }, status=409)
 
     try:
         payload = json.loads(request.body.decode('utf-8')) if request.body else request.POST
@@ -1238,6 +1250,13 @@ def dugout_batch_sync(request, game_id):
     )
     if not request.user.can_score_game(game):
         return JsonResponse({'error': 'Permission denied: you cannot score this match'}, status=403)
+
+    if game.status in ['completed', 'disputed'] or game.score_confirmed:
+        return JsonResponse({
+            'status': 'already_finalized',
+            'error': 'This game was already marked final or disputed online. Stale offline actions were not applied.',
+            'is_locked': True,
+        }, status=409)
 
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -1584,9 +1603,22 @@ def game_lineup_builder(request, game_id, team_id):
         .order_by('batting_order', 'id')
     )
     rsvps = {r.player_id: r for r in game.rsvps.filter(player__in=team.players.all())}
+    is_playoff = (game.game_type == 'playoff')
     for e in entries:
         e.rsvp = rsvps.get(e.player_id)
         e.rotation_dict = e.position_rotations or {}
+        if is_playoff:
+            reg_appearances = GameLineupEntry.objects.filter(
+                player_id=e.player_id,
+                game__season=game.season,
+                game__game_type='regular',
+                is_present=True
+            ).count()
+            e.reg_appearances = reg_appearances
+            e.is_playoff_eligible = (reg_appearances >= 2)
+        else:
+            e.reg_appearances = 0
+            e.is_playoff_eligible = True
 
     # Co-ed analysis
     present_entries = [e for e in entries if e.is_present]
@@ -1647,6 +1679,7 @@ def game_lineup_builder(request, game_id, team_id):
         'sport': sport,
         'coed_status': coed_status,
         'has_saved_default': has_saved_default,
+        'is_playoff': is_playoff,
     })
 
 
@@ -1919,8 +1952,7 @@ def officials_hub(request, season_id):
         elif action == 'toggle_pay_status':
             assignment_id = request.POST.get('assignment_id')
             assignment = get_object_or_404(GameOfficialAssignment, id=assignment_id, game__season=season)
-            assignment.pay_status = 'unpaid' if assignment.pay_status == 'paid' else 'paid'
-            assignment.save(update_fields=['pay_status'])
+            assignment.toggle_payment()
             messages.success(request, f"Marked {assignment.official.display_name} as {assignment.get_pay_status_display()}.")
 
         return redirect('officials_hub', season_id=season.id)
@@ -2102,6 +2134,11 @@ def dispute_game_score(request, game_id):
         notes = "Opposing coach contested the submitted score."
 
     game.dispute_score(request.user, notes=notes, opposing_t1_score=t1, opposing_t2_score=t2)
+    if game.season and game.season.league and game.season.league.discord_webhook_url:
+        send_discord_notification(
+            game.season.league.discord_webhook_url,
+            f"⚠️ Score Disputed: {game.team1.name} vs {game.team2.name} ({game.season.league.name}). Disputed by {request.user.display_name}. Notes: {notes}"
+        )
     messages.warning(
         request,
         "⚠️ Score marked as Disputed. The league commissioner has been notified to review and issue an official ruling."
@@ -2143,3 +2180,127 @@ def resolve_score_dispute(request, game_id):
         f"✓ Dispute resolved! Official final score set to {game.team1.name} {t1_score} - {t2_score} {game.team2.name}."
     )
     return redirect('game_detail', game_id=game.id)
+
+
+@login_required
+@require_POST
+def bulk_confirm_pending_scores(request):
+    """Overall commissioner 1-tap approval of all pending scores."""
+    if not request.user.is_overall_commissioner:
+        messages.error(request, "Only league commissioners can bulk confirm scores.")
+        return redirect('home')
+
+    pending_games = Game.objects.filter(status='pending_confirmation')
+    count = 0
+    for g in pending_games:
+        g.confirm_score(request.user)
+        count += 1
+
+    messages.success(request, f"✓ Successfully confirmed {count} pending game score(s). All standings updated.")
+    return redirect('home')
+
+
+@login_required
+@require_POST
+def record_game_forfeit(request, game_id):
+    """1-Tap Forfeit scoring assistant."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1', 'team2'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "Permission denied: you cannot score this match.")
+        return redirect('game_detail', game_id=game.id)
+
+    forfeiting_team_id = request.POST.get('forfeiting_team_id')
+    if str(forfeiting_team_id) == str(game.team1.id):
+        forfeiting_team = game.team1
+    elif str(forfeiting_team_id) == str(game.team2.id):
+        forfeiting_team = game.team2
+    else:
+        messages.error(request, "Invalid forfeiting team specified.")
+        return redirect('game_detail', game_id=game.id)
+
+    game.record_forfeit(forfeiting_team, request.user)
+    messages.success(
+        request,
+        f"✓ Forfeit recorded. {forfeiting_team.name} forfeited. Final score recorded: {game.team1.name} {game.team1_score} - {game.team2_score} {game.team2.name}."
+    )
+    return redirect('game_detail', game_id=game.id)
+
+
+@login_required
+@require_POST
+def toggle_official_payment(request, assignment_id):
+    """1-Tap toggle for referee fee payment disbursement."""
+    assignment = get_object_or_404(
+        GameOfficialAssignment.objects.select_related('game__season__league', 'official'),
+        id=assignment_id
+    )
+    league = assignment.game.season.league if assignment.game.season else None
+    if not (request.user.is_overall_commissioner or (league and request.user.can_manage_league(league))):
+        messages.error(request, "Only league commissioners can manage official fee disbursements.")
+        return redirect('officials_hub', season_id=assignment.game.season_id)
+
+    assignment.toggle_payment()
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({
+            'status': 'ok',
+            'pay_status': assignment.pay_status,
+            'is_paid': assignment.pay_status == 'paid',
+            'pay_amount': float(assignment.pay_amount)
+        })
+
+    status_label = "Paid" if assignment.pay_status == 'paid' else "Unpaid"
+    messages.success(request, f"Updated payment status for {assignment.official.display_name} ({assignment.get_role_display()}): {status_label}")
+    return redirect('officials_hub', season_id=assignment.game.season_id)
+
+
+@login_required
+def reschedule_rainouts(request, season_id):
+    """Batch reschedule assistant for rained out / postponed games."""
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(season.league)):
+        messages.error(request, "Only league commissioners can reschedule rainouts.")
+        return redirect('season_detail', season_id=season.id)
+
+    rainout_games = season.games.filter(status__in=['rainout', 'postponed']).select_related('team1', 'team2').order_by('date')
+
+    if request.method == 'POST':
+        game_ids = request.POST.getlist('selected_games')
+        target_date_str = request.POST.get('target_date')
+        target_time_str = request.POST.get('target_time', '18:00')
+        interval_minutes = int(request.POST.get('interval_minutes', 60))
+
+        if not target_date_str:
+            messages.error(request, "Please choose a target makeup date.")
+            return redirect('reschedule_rainouts', season_id=season.id)
+
+        try:
+            target_date = datetime.datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            time_parts = [int(p) for p in target_time_str.split(':')]
+            start_time = datetime.time(time_parts[0], time_parts[1])
+        except Exception:
+            messages.error(request, "Invalid makeup date or time format.")
+            return redirect('reschedule_rainouts', season_id=season.id)
+
+        target_dt = datetime.datetime.combine(target_date, start_time)
+        target_tz_dt = timezone.make_aware(target_dt, timezone.get_current_timezone())
+
+        moved_count = 0
+        current_slot = target_tz_dt
+        for gid in game_ids:
+            g = rainout_games.filter(id=gid).first()
+            if g:
+                g.date = current_slot
+                g.status = 'scheduled'
+                g.notes = (f"{g.notes or ''}\nRescheduled makeup for {current_slot.strftime('%b %d @ %I:%M %p')}").strip()
+                g.save(update_fields=['date', 'status', 'notes'])
+                current_slot += datetime.timedelta(minutes=interval_minutes)
+                moved_count += 1
+
+        messages.success(request, f"✓ Successfully rescheduled {moved_count} game(s) to {target_date.strftime('%A, %b %d, %Y')}.")
+        return redirect('season_detail', season_id=season.id)
+
+    return render(request, 'leagues/reschedule_rainouts.html', {
+        'season': season,
+        'rainout_games': rainout_games,
+    })

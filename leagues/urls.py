@@ -50,4 +50,9 @@ urlpatterns = [
     path('games/<int:game_id>/score/confirm/', views.confirm_game_score, name='confirm_game_score'),
     path('games/<int:game_id>/score/dispute/', views.dispute_game_score, name='dispute_game_score'),
     path('games/<int:game_id>/score/resolve/', views.resolve_score_dispute, name='resolve_score_dispute'),
+    # Comprehensive Edge Cases & Operational Integrity
+    path('scores/bulk-confirm/', views.bulk_confirm_pending_scores, name='bulk_confirm_pending_scores'),
+    path('games/<int:game_id>/forfeit/', views.record_game_forfeit, name='record_game_forfeit'),
+    path('seasons/<int:season_id>/reschedule-rainouts/', views.reschedule_rainouts, name='reschedule_rainouts'),
+    path('officials/assignments/<int:assignment_id>/toggle-payment/', views.toggle_official_payment, name='toggle_official_payment'),
 ]

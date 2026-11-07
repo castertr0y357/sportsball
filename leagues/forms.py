@@ -91,6 +91,38 @@ class GameForm(forms.ModelForm):
             self.fields['team1'].queryset = teams_qs
             self.fields['team2'].queryset = teams_qs
 
+    def clean(self):
+        cleaned_data = super().clean()
+        date = cleaned_data.get('date')
+        location = cleaned_data.get('location', '').strip()
+        team1 = cleaned_data.get('team1')
+        team2 = cleaned_data.get('team2')
+
+        if team1 and team2 and team1 == team2:
+            raise forms.ValidationError('A team cannot play against itself.')
+
+        if date and location:
+            from datetime import timedelta
+            # Venue double-booking conflict check within 90-minute window
+            start_window = date - timedelta(minutes=89)
+            end_window = date + timedelta(minutes=89)
+            conflicts = Game.objects.filter(
+                location__iexact=location,
+                date__gte=start_window,
+                date__lte=end_window,
+                status__in=['scheduled', 'in_progress']
+            )
+            if self.instance and self.instance.pk:
+                conflicts = conflicts.exclude(pk=self.instance.pk)
+
+            conflict = conflicts.first()
+            if conflict:
+                time_str = conflict.date.strftime('%b %d at %I:%M %p')
+                raise forms.ValidationError(
+                    f"Venue Conflict: '{conflict.team1.name} vs {conflict.team2.name}' is already scheduled at '{location}' on {time_str}."
+                )
+        return cleaned_data
+
 
 class GameScoreForm(forms.ModelForm):
     class Meta:

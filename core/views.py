@@ -147,6 +147,9 @@ def home(request):
                 game__date__gte=now
             ).select_related('game__team1', 'game__team2', 'game__season__league', 'official').order_by('game__date')[:6]
 
+        # Auto-confirm scores where opponent review window (>48h) has elapsed
+        Game.auto_finalize_stale_pending_games(hours=48)
+
         # Opponent score confirmation queue
         if request.user.is_overall_commissioner:
             pending_score_confirmations = Game.objects.filter(

@@ -319,6 +319,31 @@ function shareGameLink() {
                 {{ score_form.as_p }}
                 <button type="submit" class="btn">Save Score &amp; Status</button>
             </form>
+
+            <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px dashed var(--border);">
+                <details>
+                    <summary style="font-size:0.88rem; font-weight:700; color:#dc2626; cursor:pointer;">
+                        🏳️ Record Team Forfeit / No-Show
+                    </summary>
+                    <div style="margin-top:0.75rem; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:0.85rem;">
+                        <p style="font-size:0.82rem; color:#991b1b; margin:0 0 0.5rem;">
+                            Awards standard forfeit score (7-0 Softball, 15-0 Basketball, 2-0 Soccer) to the attending team.
+                        </p>
+                        <form method="post" action="{% url 'record_game_forfeit' game.id %}">
+                            {% csrf_token %}
+                            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Which team forfeited?</label>
+                            <select name="forfeiting_team_id" class="input" style="margin-bottom:0.6rem; width:100%; padding:0.4rem;" required>
+                                <option value="">-- Select Forfeiting Team --</option>
+                                <option value="{{ game.team1.id }}">{{ game.team1.name }} (Home)</option>
+                                <option value="{{ game.team2.id }}">{{ game.team2.name }} (Away)</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm" style="background:#dc2626; color:#fff;" onclick="return confirm('Record an official forfeit for this match?');">
+                                Confirm Official Forfeit
+                            </button>
+                        </form>
+                    </div>
+                </details>
+            </div>
         {% endif %}
     </div>
 

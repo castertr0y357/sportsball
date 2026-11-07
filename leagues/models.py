@@ -688,6 +688,61 @@ class Game(models.Model):
         self.log_score_event(user, 'score_disputed', details)
         self.save(update_fields=['status', 'score_dispute_notes', 'score_audit_log'])
 
+    @classmethod
+    def auto_finalize_stale_pending_games(cls, hours=48):
+        """Auto-confirms games waiting on opponent confirmation past the review window."""
+        cutoff = timezone.now() - timezone.timedelta(hours=hours)
+        stale_games = cls.objects.filter(
+            status='pending_confirmation',
+            score_submitted_at__lte=cutoff
+        )
+        count = 0
+        for game in stale_games:
+            game.status = 'completed'
+            game.score_confirmed = True
+            game.log_score_event(None, 'auto_finalized', f"Score auto-confirmed after {hours}h opponent review window without dispute.")
+            game.save(update_fields=['status', 'score_confirmed', 'score_audit_log'])
+            count += 1
+        return count
+
+    def record_forfeit(self, forfeiting_team, recording_user):
+        """Standardizes 1-tap forfeit scoring and finalization by sport."""
+        sport = (self.season.league.sport if self.season and self.season.league else '').lower()
+        scores_by_sport = {
+            'softball': 7,
+            'baseball': 7,
+            'basketball': 15,
+            'soccer': 2,
+            'volleyball': 2,
+            'flag_football': 14,
+        }
+        win_score = scores_by_sport.get(sport, 1)
+
+        if forfeiting_team == self.team1:
+            self.team1_score = 0
+            self.team2_score = win_score
+            non_forfeiting_name = self.team2.name
+        else:
+            self.team1_score = win_score
+            self.team2_score = 0
+            non_forfeiting_name = self.team1.name
+
+        self.status = 'completed'
+        self.score_confirmed = True
+        self.score_confirmed_by = recording_user
+        self.score_submitted_by = recording_user
+        self.score_submitted_at = timezone.now()
+        self.log_score_event(
+            recording_user,
+            'forfeit_recorded',
+            f"Forfeit recorded by {recording_user.display_name}. {forfeiting_team.name} forfeited to {non_forfeiting_name} ({self.team1_score}-{self.team2_score})."
+        )
+        self.save(update_fields=[
+            'team1_score', 'team2_score', 'status',
+            'score_confirmed', 'score_confirmed_by',
+            'score_submitted_by', 'score_submitted_at', 'score_audit_log'
+        ])
+
     def get_player_rsvp(self, player):
         if not player or not player.is_authenticated:
             return None
@@ -788,12 +843,23 @@ class GameOfficialAssignment(models.Model):
     pay_amount = models.DecimalField(max_digits=6, decimal_places=2, default=30.00, help_text="Pay stipend for this assignment ($)")
     pay_status = models.CharField(max_length=20, choices=PAY_STATUS_CHOICES, default='unpaid')
     notes = models.CharField(max_length=150, blank=True, help_text="e.g. Needs sub due to work travel")
+    paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['game__date', 'role']
         unique_together = [('game', 'official', 'role')]
+
+    def toggle_payment(self):
+        """1-Tap toggle for referee fee disbursement."""
+        if self.pay_status == 'paid':
+            self.pay_status = 'unpaid'
+            self.paid_at = None
+        else:
+            self.pay_status = 'paid'
+            self.paid_at = timezone.now()
+        self.save(update_fields=['pay_status', 'paid_at'])
 
     def __str__(self):
         return f"{self.official.display_name} - {self.get_role_display()} ({self.game})"

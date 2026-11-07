@@ -91,6 +91,18 @@
     </div>
 </div>
 
+{% if is_playoff %}
+<div class="card" style="margin-bottom:1rem; background:#eff6ff; border:1px solid #bfdbfe; padding:0.65rem 0.85rem; font-size:0.85rem; color:#1e40af;">
+    🏆 <strong>Playoff Match Lineup:</strong> Players with fewer than 2 regular season appearances are flagged to ensure playoff integrity and prevent ringers.
+</div>
+{% endif %}
+
+{% if coed_status.has_gender_data and coed_status.female_count < 3 %}
+<div class="card" style="margin-bottom:1rem; background:#fffbeb; border:1px solid #fde68a; padding:0.65rem 0.85rem; font-size:0.85rem; color:#92400e;">
+    ℹ️ <strong>Co-Ed Player Ratio Advisory:</strong> {{ coed_status.female_count }} active female player{{ coed_status.female_count|pluralize }}. Standard church co-ed league rules recommend at least 3 active female players.
+</div>
+{% endif %}
+
 <!-- Co-Ed Rule Compliance Banner -->
 {% if coed_status.has_gender_data %}
     {% if coed_status.is_alternating %}
@@ -173,6 +185,11 @@
                                 <strong>{{ e.player.display_name }}</strong>
                                 {% if e.player.jersey_number %}<span class="badge">#{{ e.player.jersey_number }}</span>{% endif %}
                                 {% if e.player.gender %}<span class="badge" style="font-size:0.7rem; opacity:0.8;">{{ e.player.gender }}</span>{% endif %}
+                                {% if is_playoff and not e.is_playoff_eligible %}
+                                    <span class="badge" style="background:#dc2626; color:#fff; font-size:0.7rem;" title="Must have played in at least 2 regular season games for playoff eligibility">
+                                        ⚠️ {{ e.reg_appearances }}/2 Reg Games
+                                    </span>
+                                {% endif %}
                                 {% if e.rsvp %}
                                     {% if e.rsvp.response == 'yes' %}
                                         <span class="badge badge-success" style="font-size:0.75rem;">&#10003; In</span>

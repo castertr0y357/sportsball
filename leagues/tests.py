@@ -1816,3 +1816,182 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(d_resp.status_code, 302)
         game.refresh_from_db()
         self.assertEqual(game.status, 'pending_confirmation')
+
+
+    def test_auto_finalize_stale_scores(self):
+        # Game pending confirmation with score submitted 50 hours ago
+        stale_game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now() - timedelta(days=3), location="Field A",
+            status='pending_confirmation', team1_score=6, team2_score=4,
+            score_submitted_by=self.coach_user,
+            score_submitted_at=timezone.now() - timedelta(hours=50)
+        )
+        self.assertFalse(stale_game.score_confirmed)
+
+        finalized_count = Game.auto_finalize_stale_pending_games(hours=48)
+        self.assertGreaterEqual(finalized_count, 1)
+
+        stale_game.refresh_from_db()
+        self.assertEqual(stale_game.status, 'completed')
+        self.assertTrue(stale_game.score_confirmed)
+        self.assertIn("auto-confirmed", stale_game.score_audit_log[-1]['details'].lower())
+
+
+    def test_bulk_confirm_pending_scores(self):
+        g1 = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='pending_confirmation',
+            team1_score=5, team2_score=2, score_submitted_by=self.coach_user
+        )
+        g2 = Game.objects.create(
+            season=self.season, team1=self.team2, team2=self.team1,
+            date=timezone.now(), location="Field B", status='pending_confirmation',
+            team1_score=11, team2_score=8, score_submitted_by=self.coach_user
+        )
+
+        self.client.login(username="admin_user", password="password123")
+        resp = self.client.post(reverse('bulk_confirm_pending_scores'))
+        self.assertEqual(resp.status_code, 302)
+
+        g1.refresh_from_db()
+        g2.refresh_from_db()
+        self.assertEqual(g1.status, 'completed')
+        self.assertTrue(g1.score_confirmed)
+        self.assertEqual(g2.status, 'completed')
+        self.assertTrue(g2.score_confirmed)
+
+
+    def test_dugout_batch_sync_rejects_completed_game(self):
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='completed',
+            team1_score=8, team2_score=5, score_confirmed=True
+        )
+
+        self.client.login(username="coach_user", password="password123")
+        sync_payload = {
+            'actions': [{'action': 'run_plus', 'team': 'team1', 'points': 5}]
+        }
+        resp = self.client.post(
+            reverse('dugout_batch_sync', args=[game.id]),
+            data=json.dumps(sync_payload),
+            content_type='application/json'
+        )
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json().get('status'), 'already_finalized')
+
+        game.refresh_from_db()
+        self.assertEqual(game.team1_score, 8)  # Score preserved!
+
+
+    def test_forfeit_recording(self):
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='scheduled'
+        )
+
+        self.client.login(username="coach_user", password="password123")
+        resp = self.client.post(reverse('record_game_forfeit', args=[game.id]), {
+            'forfeiting_team_id': self.team1.id
+        })
+        self.assertEqual(resp.status_code, 302)
+
+        game.refresh_from_db()
+        self.assertEqual(game.status, 'completed')
+        self.assertTrue(game.score_confirmed)
+        self.assertEqual(game.winner, self.team2)
+        self.assertEqual(game.team1_score, 0)
+        self.assertGreater(game.team2_score, 0)
+        self.assertIn("Forfeit recorded", game.score_audit_log[-1]['details'])
+
+
+    def test_field_double_booking_validation(self):
+        from leagues.forms import GameForm
+        game_time = timezone.now() + timedelta(days=5)
+        Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=game_time, location="Heritage Field 1", status='scheduled'
+        )
+
+        # Attempt to schedule another game 30 minutes later at same field
+        local_clash_time = timezone.localtime(game_time) + timedelta(minutes=30)
+        clashing_form = GameForm(data={
+            'team1': self.team1.id,
+            'team2': self.team2.id,
+            'date': local_clash_time.strftime('%Y-%m-%dT%H:%M'),
+            'location': 'Heritage Field 1',
+            'game_type': 'regular',
+            'status': 'scheduled',
+            'week_number': 2,
+        }, season=self.season)
+
+        self.assertFalse(clashing_form.is_valid())
+        self.assertIn("Venue Conflict", str(clashing_form.errors))
+
+
+    def test_officials_payment_toggle(self):
+        ref = CustomUser.objects.create_user(
+            username="ref_tom", password="password123", role="referee"
+        )
+        game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Field A", status='scheduled'
+        )
+        from leagues.models import GameOfficialAssignment
+        assignment = GameOfficialAssignment.objects.create(
+            game=game, official=ref, role='head_ref', pay_amount=35.00, pay_status='unpaid'
+        )
+
+        self.client.login(username="admin_user", password="password123")
+        # 1. Mark paid
+        resp1 = self.client.post(reverse('toggle_official_payment', args=[assignment.id]))
+        self.assertEqual(resp1.status_code, 302)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pay_status, 'paid')
+        self.assertIsNotNone(assignment.paid_at)
+
+        # 2. Mark unpaid
+        resp2 = self.client.post(reverse('toggle_official_payment', args=[assignment.id]))
+        self.assertEqual(resp2.status_code, 302)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pay_status, 'unpaid')
+        self.assertIsNone(assignment.paid_at)
+
+
+    def test_walkup_audio_size_validation(self):
+        from users.forms import ProfileForm
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        # Mock file > 5MB
+        oversized_data = b"x" * (6 * 1024 * 1024)
+        mock_file = SimpleUploadedFile("big_song.mp3", oversized_data, content_type="audio/mpeg")
+
+        form = ProfileForm(
+            data={'first_name': 'Test', 'last_name': 'User', 'email': 'test@example.com'},
+            files={'walkup_song_file': mock_file},
+            instance=self.player_user
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Audio file too large", str(form.errors))
+
+
+    def test_reschedule_rainouts(self):
+        rainout_game = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Heritage Park", status='rainout'
+        )
+
+        self.client.login(username="admin_user", password="password123")
+        makeup_date = (timezone.now() + timedelta(days=14)).strftime('%Y-%m-%d')
+        resp = self.client.post(reverse('reschedule_rainouts', args=[self.season.id]), {
+            'selected_games': [rainout_game.id],
+            'target_date': makeup_date,
+            'target_time': '10:00',
+            'interval_minutes': 60
+        })
+        self.assertEqual(resp.status_code, 302)
+
+        rainout_game.refresh_from_db()
+        self.assertEqual(rainout_game.status, 'scheduled')
+        self.assertEqual(rainout_game.date.strftime('%Y-%m-%d'), makeup_date)
+        self.assertIn("Rescheduled makeup", rainout_game.notes)

@@ -77,6 +77,14 @@ class ProfileForm(forms.ModelForm):
             'bio': forms.Textarea(attrs={'rows': 3}),
         }
 
+    def clean_walkup_song_file(self):
+        file = self.cleaned_data.get('walkup_song_file')
+        if file and hasattr(file, 'size'):
+            max_size = 5 * 1024 * 1024  # 5MB max for fast offline ballpark loading
+            if file.size > max_size:
+                raise forms.ValidationError('Audio file too large. Please upload an audio clip under 5 MB (10–15 second snippet recommended).')
+        return file
+
 
 class WaiverSignatureForm(forms.Form):
     signature = forms.CharField(
