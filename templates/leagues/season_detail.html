@@ -11,6 +11,8 @@
         </p>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'schedule_grid' season.id %}" class="btn btn-secondary">📊 Master Grid</a>
+        <a href="{% url 'season_calendar_ics' season.id %}" class="btn btn-secondary" title="Subscribe to season schedule (.ics)">📅 Calendar (.ics)</a>
         <a href="{% url 'team_list' season.id %}" class="btn btn-secondary">Teams &amp; Rosters</a>
         <a href="{% url 'playoff_bracket' season.id %}" class="btn btn-secondary">Playoff Bracket</a>
         <a href="{% url 'leaderboard' %}?season={{ season.id }}" class="btn btn-secondary">Season Stat Leaders</a>
@@ -35,8 +37,18 @@
                 <a href="{% url 'create_team' season.id %}" class="btn btn-sm btn-secondary">+ Add Team</a>
             {% endif %}
             {% if can_manage_league %}
+                <a href="{% url 'schedule_grid' season.id %}" class="btn btn-sm btn-secondary">📊 Master Grid</a>
                 <a href="{% url 'create_game' season.id %}" class="btn btn-sm btn-secondary">+ Schedule Game</a>
                 <a href="{% url 'generate_schedule' season.id %}" class="btn btn-sm btn-accent">⚡ Auto-Generate Schedule</a>
+                {% if today_games_count > 0 %}
+                    <form method="post" action="{% url 'rainout_today_games' season.id %}" style="display:inline;" onsubmit="return confirm('Postpone and move all today's games to the buffer makeup week?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
+                        <button type="submit" class="btn btn-sm" style="background:#f59e0b; color:white; border:none; font-weight:700;">
+                            🌧️ Rainout Today ({{ today_games_count }})
+                        </button>
+                    </form>
+                {% endif %}
             {% endif %}
             <a href="{% url 'create_announcement' %}" class="btn btn-sm btn-secondary">📢 Post Announcement</a>
         </div>

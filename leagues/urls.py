@@ -32,4 +32,11 @@ urlpatterns = [
     path('games/<int:game_id>/live-state/', views.game_live_state, name='game_live_state'),
     # Zero-consequences Practice & Training Sandbox
     path('practice-sandbox/', views.practice_sandbox, name='practice_sandbox'),
+    # Smart Scheduling, Weather Rainouts, Calendar Feeds (.ics), and Master Grid
+    path('seasons/<int:season_id>/calendar.ics', views.season_calendar_ics, name='season_calendar_ics'),
+    path('teams/<int:team_id>/calendar.ics', views.team_calendar_ics, name='team_calendar_ics'),
+    path('calendar/my-games.ics', views.user_calendar_ics, name='user_calendar_ics'),
+    path('seasons/<int:season_id>/rainout-today/', views.rainout_today_games, name='rainout_today_games'),
+    path('seasons/<int:season_id>/schedule-grid/', views.schedule_grid, name='schedule_grid'),
+    path('seasons/<int:season_id>/schedule/swap/', views.swap_game_slots, name='swap_game_slots'),
 ]

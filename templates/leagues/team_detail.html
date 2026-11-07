@@ -11,9 +11,11 @@
             &bull; Captain: {{ team.captain.display_name }}
         </p>
     </div>
-    <div style="display:flex; gap:0.5rem; align-items:center;">
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a href="{% url 'team_calendar_ics' team.id %}" class="btn btn-secondary" title="Subscribe to team games (.ics)">
+            📅 Subscribe to Calendar (.ics)
+        </a>
         <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
-
     </div>
 </div>
 

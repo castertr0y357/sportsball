@@ -1,19 +1,295 @@
 {% extends "base.html" %}
-{% block title %}Generate Round-Robin Schedule | {{ season.name }}{% endblock %}
+{% block title %}Generate Multi-Slot Schedule | {{ season.name }}{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:650px; margin:0 auto;">
-    <h1>Auto-Generate Round-Robin Schedule</h1>
-    <p style="color:var(--text-muted);">
-        Season: <strong>{{ season.name }}</strong> ({{ team_count }} registered teams)
-    </p>
-    <form method="post">
+<div style="max-width: 900px; margin: 0 auto;">
+    <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                <a href="{% url 'season_detail' season.id %}" style="color: var(--accent);">&larr; Back to {{ season.name }}</a>
+            </div>
+            <h1 style="margin: 0; font-size: 1.75rem;">⚡ Smart Schedule Generator</h1>
+            <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+                Automatic balanced round-robin with multi-day, parallel court, and church service protections.
+            </p>
+        </div>
+        <div>
+            <a href="{% url 'schedule_grid' season.id %}" class="btn btn-secondary" style="font-size: 0.85rem;">
+                📊 View Master Grid
+            </a>
+        </div>
+    </div>
+
+    <!-- Quick Presets -->
+    <div class="card" style="margin-bottom: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-weight: 600; font-size: 0.9rem; color: var(--text);">⚡ Quick Presets:</span>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.65rem;" onclick="applyPreset('evening')">
+                    🌙 Tue/Thu Evening (6:30 & 7:45 PM)
+                </button>
+                <button type="button" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.65rem;" onclick="applyPreset('saturday')">
+                    ☀️ Saturday Morning (9:00, 10:15 & 11:30 AM)
+                </button>
+                <button type="button" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.65rem;" onclick="applyPreset('sunday_afternoon')">
+                    ⛪ Sunday Afternoon (1:30 & 3:00 PM)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" id="schedule-form" class="card">
         {% csrf_token %}
-        {{ form.as_p }}
-        <div style="display:flex; gap:0.5rem;">
-            <button type="submit" class="btn">Generate Full Schedule</button>
+
+        {% if form.errors %}
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; color: #ef4444;">
+                <strong>Please fix the errors below:</strong>
+                <ul style="margin: 0.5rem 0 0 1rem;">
+                    {% for field, errors in form.errors.items %}
+                        {% for error in errors %}
+                            <li>{{ field }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        <!-- Dates & Days -->
+        <div style="margin-bottom: 1.5rem;">
+            <h3 style="margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                1. Date & Game Days
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.35rem;">
+                        {{ form.start_date.label }}
+                    </label>
+                    {{ form.start_date }}
+                    <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+                        {{ form.start_date.help_text }}
+                    </small>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.35rem;">
+                        {{ form.game_days.label }}
+                    </label>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                        {% for choice in form.game_days %}
+                            <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; padding: 0.3rem 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem;">
+                                {{ choice.tag }} {{ choice.choice_label }}
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+                        {{ form.game_days.help_text }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Times & Venues -->
+        <div style="margin-bottom: 1.5rem;">
+            <h3 style="margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                2. Slots & Venues
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.35rem;">
+                        {{ form.time_slots.label }}
+                    </label>
+                    {{ form.time_slots }}
+                    <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+                        {{ form.time_slots.help_text }}
+                    </small>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.35rem;">
+                        {{ form.venues.label }}
+                    </label>
+                    {{ form.venues }}
+                    <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+                        {{ form.venues.help_text }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Church Protections & Blackouts -->
+        <div style="margin-bottom: 1.5rem;">
+            <h3 style="margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                3. Church Protections & Blackouts
+            </h3>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 0.85rem; margin-top: 1rem;">
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.35rem;">
+                        {{ form.blackout_dates.label }}
+                    </label>
+                    {{ form.blackout_dates }}
+                    <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+                        {{ form.blackout_dates.help_text }}
+                    </small>
+                </div>
+
+                <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 0.85rem;">
+                    <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; margin-bottom: 0.6rem;">
+                        {{ form.protect_wednesdays }}
+                        <div>
+                            <span style="font-weight: 600;">⛪ Protect Wednesday Evenings</span>
+                            <span style="display: block; font-size: 0.85rem; color: var(--text-muted);">
+                                Never schedule games at or after 5:00 PM on Wednesdays (prayer meetings, Bible studies, youth choir).
+                            </span>
+                        </div>
+                    </label>
+
+                    <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+                        {{ form.protect_sunday_mornings }}
+                        <div>
+                            <span style="font-weight: 600;">🙏 Protect Sunday Mornings</span>
+                            <span style="display: block; font-size: 0.85rem; color: var(--text-muted);">
+                                Never schedule games before 1:00 PM on Sundays (church worship services).
+                            </span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- League Format & Buffer -->
+        <div style="margin-bottom: 1.5rem;">
+            <h3 style="margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                4. Options & Buffer Week
+            </h3>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 0.75rem; margin-top: 1rem;">
+                <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+                    {{ form.add_weather_buffer }}
+                    <div>
+                        <span style="font-weight: 600;">🌧️ Reserve Weather Buffer / Makeup Week</span>
+                        <span style="display: block; font-size: 0.85rem; color: var(--text-muted);">
+                            Keeps a dedicated buffer week between the regular season and playoffs for 1-tap rainout makeups.
+                        </span>
+                    </div>
+                </label>
+
+                <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+                    {{ form.double_round_robin }}
+                    <div>
+                        <span style="font-weight: 600;">🔄 Double Round Robin</span>
+                        <span style="display: block; font-size: 0.85rem; color: var(--text-muted);">
+                            Every team plays each opponent twice (home and away).
+                        </span>
+                    </div>
+                </label>
+
+                <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+                    {{ form.clear_existing_scheduled }}
+                    <div>
+                        <span style="font-weight: 600;">🧹 Clear Existing Unplayed Games</span>
+                        <span style="display: block; font-size: 0.85rem; color: var(--text-muted);">
+                            Replaces previously generated scheduled games that have not been scored yet.
+                        </span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Hidden legacy fields -->
+        {{ form.start_datetime }}
+        {{ form.location }}
+
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end; border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
             <a href="{% url 'season_detail' season.id %}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" name="action" value="preview" class="btn btn-secondary" style="border-color: var(--accent); color: var(--accent);">
+                👀 Preview Draft Schedule
+            </button>
+            <button type="submit" name="action" value="generate" class="btn btn-primary" onclick="return confirm('Generate and commit schedule games now?');">
+                ⚡ Save & Publish Schedule
+            </button>
         </div>
     </form>
+
+    <!-- Preview Table -->
+    {% if preview_games is not None %}
+        <div class="card" style="margin-top: 2rem; border: 2px solid var(--accent);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h2 style="margin: 0; font-size: 1.35rem; color: var(--accent);">
+                        👀 Draft Schedule Preview ({{ preview_games|length }} Matchups)
+                    </h2>
+                    <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.9rem;">
+                        This is a simulation. Click "Save & Publish Schedule" above to commit these games.
+                    </p>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
+                            <th style="padding: 0.5rem;">Week</th>
+                            <th style="padding: 0.5rem;">Date & Time</th>
+                            <th style="padding: 0.5rem;">Home Team</th>
+                            <th style="padding: 0.5rem;">Away Team</th>
+                            <th style="padding: 0.5rem;">Venue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in preview_games %}
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.5rem; font-weight: 600;">Week {{ g.week_number }}</td>
+                                <td style="padding: 0.5rem;">{{ g.date|date:"D, M j, Y @ g:i A" }}</td>
+                                <td style="padding: 0.5rem; font-weight: 600; color: var(--accent);">{{ g.team1.name }}</td>
+                                <td style="padding: 0.5rem; font-weight: 600;">{{ g.team2.name }}</td>
+                                <td style="padding: 0.5rem; color: var(--text-muted);">{{ g.location }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5" style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                                    No matchups could be planned with current settings. Check team count or dates.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% endif %}
 </div>
+
+<script>
+function applyPreset(preset) {
+    const daysInputs = document.querySelectorAll('input[name="game_days"]');
+    const timeSlotsInput = document.querySelector('input[name="time_slots"]');
+    const venuesInput = document.querySelector('textarea[name="venues"]');
+    const wedProtect = document.querySelector('input[name="protect_wednesdays"]');
+    const sunProtect = document.querySelector('input[name="protect_sunday_mornings"]');
+
+    if (preset === 'evening') {
+        daysInputs.forEach(cb => {
+            cb.checked = (cb.value === '1' || cb.value === '3'); // Tue, Thu
+        });
+        if (timeSlotsInput) timeSlotsInput.value = "18:30, 19:45";
+        if (venuesInput) venuesInput.value = "Court 1\nCourt 2";
+        if (wedProtect) wedProtect.checked = true;
+        if (sunProtect) sunProtect.checked = true;
+    } else if (preset === 'saturday') {
+        daysInputs.forEach(cb => {
+            cb.checked = (cb.value === '5'); // Saturday
+        });
+        if (timeSlotsInput) timeSlotsInput.value = "09:00, 10:15, 11:30";
+        if (venuesInput) venuesInput.value = "Diamond #1\nDiamond #2";
+        if (wedProtect) wedProtect.checked = true;
+        if (sunProtect) sunProtect.checked = true;
+    } else if (preset === 'sunday_afternoon') {
+        daysInputs.forEach(cb => {
+            cb.checked = (cb.value === '6'); // Sunday
+        });
+        if (timeSlotsInput) timeSlotsInput.value = "13:30, 15:00";
+        if (venuesInput) venuesInput.value = "Main Gym";
+        if (wedProtect) wedProtect.checked = true;
+        if (sunProtect) sunProtect.checked = true;
+    }
+}
+</script>
 {% endblock %}

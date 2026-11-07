@@ -1,11 +1,12 @@
+import datetime
 from datetime import timedelta
 import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
-from django.db.models import F
+from django.db.models import F, Max, Q
 from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP
 from core.services.notifications import send_discord_notification, send_twilio_sms
 from .forms import (
@@ -14,6 +15,8 @@ from .forms import (
 )
 from stats.models import PlayerGameStat, SPORT_DEFAULT_CATEGORIES
 from stats.forms import PlayerGameStatForm
+from leagues.services.scheduler import ScheduleGeneratorService
+from leagues.services.calendar_feed import generate_ics_feed
 
 
 def league_list(request):
@@ -71,6 +74,9 @@ def season_detail(request, season_id):
     registrations = season.registrations.select_related('player', 'preferred_team').all()
     user_registration = None
     can_manage_league = False
+    today = timezone.localdate()
+    today_games_count = season.games.filter(date__date=today, status='scheduled').count()
+
     if request.user.is_authenticated:
         user_registration = registrations.filter(player=request.user).first()
         can_manage_league = request.user.can_manage_league(season.league)
@@ -84,6 +90,8 @@ def season_detail(request, season_id):
         'registrations': registrations,
         'user_registration': user_registration,
         'can_manage_league': can_manage_league,
+        'today': today,
+        'today_games_count': today_games_count,
     })
 
 
@@ -340,73 +348,65 @@ def generate_schedule(request, season_id):
         messages.error(request, "At least 2 teams are required in the season to generate a schedule.")
         return redirect('season_detail', season_id=season.id)
 
+    preview_games = None
+
     if request.method == 'POST':
         form = ScheduleGeneratorForm(request.POST)
         if form.is_valid():
-            start_dt = form.cleaned_data['start_datetime']
-            location = form.cleaned_data['location']
-            double_rr = form.cleaned_data['double_round_robin']
-            clear_existing = form.cleaned_data['clear_existing_scheduled']
+            start_date = form.cleaned_data['start_date']
+            game_days = form.cleaned_data['parsed_game_days']
+            time_slots = form.cleaned_data['parsed_time_slots']
+            venues = form.cleaned_data['parsed_venues']
+            blackout_dates = form.cleaned_data['parsed_blackout_dates']
+            protect_wednesdays = form.cleaned_data.get('protect_wednesdays', True)
+            protect_sunday_mornings = form.cleaned_data.get('protect_sunday_mornings', True)
+            double_rr = form.cleaned_data.get('double_round_robin', False)
+            add_buffer = form.cleaned_data.get('add_weather_buffer', True)
+            clear_existing = form.cleaned_data.get('clear_existing_scheduled', True)
 
-            if clear_existing:
-                season.games.filter(status='scheduled', game_type='regular').delete()
-
-            rotation = list(teams)
-            if len(rotation) % 2 == 1:
-                rotation.append(None)
-
-            n = len(rotation)
-            num_rounds = n - 1
-            half = n // 2
-            created_count = 0
-
-            rounds_matchups = []
-            for r in range(num_rounds):
-                week_pairs = []
-                for i in range(half):
-                    t1 = rotation[i]
-                    t2 = rotation[n - 1 - i]
-                    if t1 is not None and t2 is not None:
-                        if r % 2 == 1 and i == 0:
-                            week_pairs.append((t2, t1))
-                        else:
-                            week_pairs.append((t1, t2))
-                rounds_matchups.append(week_pairs)
-                rotation = [rotation[0]] + [rotation[-1]] + rotation[1:-1]
-
-            if double_rr:
-                second_half = [[(t2, t1) for (t1, t2) in week] for week in rounds_matchups]
-                rounds_matchups.extend(second_half)
-
-            for week_idx, week_pairs in enumerate(rounds_matchups, start=1):
-                week_base_dt = start_dt + timedelta(days=7 * (week_idx - 1))
-                for slot_idx, (home_team, away_team) in enumerate(week_pairs):
-                    game_dt = week_base_dt + timedelta(hours=slot_idx)
-                    Game.objects.create(
-                        season=season,
-                        team1=home_team,
-                        team2=away_team,
-                        date=game_dt,
-                        location=location,
-                        status='scheduled',
-                        game_type='regular',
-                        week_number=week_idx,
-                    )
-                    created_count += 1
-
-            messages.success(
-                request,
-                f"Generated {created_count} round-robin games across {len(rounds_matchups)} weeks!"
+            service = ScheduleGeneratorService(
+                season=season,
+                start_date=start_date,
+                game_days=game_days,
+                time_slots=time_slots,
+                venues=venues,
+                blackout_dates=blackout_dates,
+                protect_wednesdays=protect_wednesdays,
+                protect_sunday_mornings=protect_sunday_mornings,
+                double_round_robin=double_rr,
+                add_weather_buffer=add_buffer,
             )
-            return redirect('season_detail', season_id=season.id)
+
+            action = request.POST.get('action', 'generate')
+            if action == 'preview':
+                preview_games = service.plan_schedule()
+                messages.info(request, f"Generated draft schedule preview with {len(preview_games)} matchups. Review below and click 'Save & Publish Schedule' to confirm.")
+            else:
+                created_count = service.execute_and_save(clear_existing_scheduled=clear_existing)
+                messages.success(
+                    request,
+                    f"Successfully generated and published {created_count} regular-season games!"
+                )
+                return redirect('season_detail', season_id=season.id)
     else:
-        default_dt = timezone.now().replace(hour=18, minute=30, second=0, microsecond=0) + timedelta(days=2)
-        form = ScheduleGeneratorForm(initial={'start_datetime': default_dt.strftime('%Y-%m-%dT%H:%M')})
+        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
+        form = ScheduleGeneratorForm(initial={
+            'start_date': tomorrow,
+            'game_days': ['1', '3'],
+            'time_slots': '18:30, 19:45',
+            'venues': "Court 1\nCourt 2",
+            'protect_wednesdays': True,
+            'protect_sunday_mornings': True,
+            'double_round_robin': False,
+            'add_weather_buffer': True,
+            'clear_existing_scheduled': True,
+        })
 
     return render(request, 'leagues/generate_schedule.html', {
         'form': form,
         'season': season,
         'team_count': len(teams),
+        'preview_games': preview_games,
     })
 
 
@@ -1329,3 +1329,154 @@ def game_lineup_builder(request, game_id, team_id):
         'rsvp_summary': rsvp_summary,
         'sport': sport,
     })
+
+
+# ==============================================================================
+# Smart Scheduling, Weather Rainout, Calendar Feeds (.ics), and Master Grid
+# ==============================================================================
+
+def team_calendar_ics(request, team_id):
+    team = get_object_or_404(Team.objects.select_related('season', 'season__league'), id=team_id)
+    games = Game.objects.filter(
+        Q(team1=team) | Q(team2=team)
+    ).select_related('team1', 'team2', 'season', 'season__league').order_by('date')
+
+    cal_name = f"{team.name} ({team.season.name if team.season else 'SportsBall'})"
+    ics_body = generate_ics_feed(games, calendar_name=cal_name, request=request)
+    filename = f"{team.name.replace(' ', '_')}_schedule.ics"
+
+    response = HttpResponse(ics_body, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+def season_calendar_ics(request, season_id):
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    games = season.games.select_related('team1', 'team2', 'season', 'season__league').order_by('date')
+
+    cal_name = f"{season.league.name} - {season.name} Master Schedule"
+    ics_body = generate_ics_feed(games, calendar_name=cal_name, request=request)
+    filename = f"{season.name.replace(' ', '_')}_master_schedule.ics"
+
+    response = HttpResponse(ics_body, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+def user_calendar_ics(request):
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Please log in to download your personalized schedule.")
+
+    user_teams = Team.objects.filter(Q(players=request.user) | Q(captain=request.user)).distinct()
+    games = Game.objects.filter(
+        Q(team1__in=user_teams) | Q(team2__in=user_teams)
+    ).select_related('team1', 'team2', 'season', 'season__league').distinct().order_by('date')
+
+    cal_name = f"My SportsBall Games ({request.user.get_full_name() or request.user.username})"
+    ics_body = generate_ics_feed(games, calendar_name=cal_name, request=request)
+    filename = "my_church_sports_schedule.ics"
+
+    response = HttpResponse(ics_body, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def rainout_today_games(request, season_id):
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only League Commissioners can postpone or rain out games.")
+        return redirect('season_detail', season_id=season.id)
+
+    target_date_str = request.GET.get('date') or request.POST.get('date')
+    if target_date_str:
+        try:
+            target_date = datetime.datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            target_date = timezone.localdate()
+    else:
+        target_date = timezone.localdate()
+
+    games_today = list(season.games.filter(date__date=target_date, status='scheduled'))
+    if not games_today:
+        messages.warning(request, f"No scheduled games found on {target_date.strftime('%B %d, %Y')} to postpone.")
+        return redirect('season_detail', season_id=season.id)
+
+    action = request.POST.get('action') or request.GET.get('action') or 'reschedule_makeup'
+
+    max_week = season.games.filter(game_type='regular').aggregate(Max('week_number'))['week_number__max'] or 1
+    makeup_week = max_week + 1
+
+    count = len(games_today)
+    for g in games_today:
+        orig_date_str = g.date.strftime('%a %b %d')
+        if action == 'postpone_only':
+            g.status = 'postponed'
+            g.notes = f"Postponed / Weather rainout on {orig_date_str}. {g.notes or ''}".strip()
+            g.save(update_fields=['status', 'notes'])
+        else:
+            weeks_ahead = max(1, makeup_week - (g.week_number or 1))
+            g.date = g.date + datetime.timedelta(days=7 * weeks_ahead)
+            g.week_number = makeup_week
+            g.status = 'scheduled'
+            g.notes = f"Rescheduled from rainout on {orig_date_str}. {g.notes or ''}".strip()
+            g.save(update_fields=['date', 'week_number', 'status', 'notes'])
+
+    if action == 'postpone_only':
+        messages.warning(request, f"🌧️ Weather Rainout: {count} game(s) on {target_date.strftime('%b %d')} have been marked Postponed.")
+    else:
+        messages.success(request, f"🌧️ Weather Rainout: {count} game(s) from {target_date.strftime('%b %d')} have been moved to Makeup Week {makeup_week}!")
+
+    return redirect('schedule_grid', season_id=season.id)
+
+
+def schedule_grid(request, season_id):
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    can_manage = request.user.is_authenticated and request.user.can_manage_league(season.league)
+
+    games = season.games.select_related('team1', 'team2').order_by('week_number', 'date', 'location')
+
+    weeks_dict = {}
+    for g in games:
+        w = g.week_number or 1
+        if w not in weeks_dict:
+            weeks_dict[w] = []
+        weeks_dict[w].append(g)
+
+    weeks = sorted(weeks_dict.items(), key=lambda x: x[0])
+    today = timezone.localdate()
+    today_games_count = season.games.filter(date__date=today, status='scheduled').count()
+
+    return render(request, 'leagues/schedule_grid.html', {
+        'season': season,
+        'weeks': weeks,
+        'can_manage': can_manage,
+        'today': today,
+        'today_games_count': today_games_count,
+    })
+
+
+@login_required
+def swap_game_slots(request, season_id):
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    if not request.user.can_manage_league(season.league):
+        messages.error(request, "Only League Commissioners can swap game slots.")
+        return redirect('schedule_grid', season_id=season.id)
+
+    if request.method == 'POST':
+        game1_id = request.POST.get('game1_id')
+        game2_id = request.POST.get('game2_id')
+
+        g1 = get_object_or_404(Game, id=game1_id, season=season)
+        g2 = get_object_or_404(Game, id=game2_id, season=season)
+
+        g1.date, g2.date = g2.date, g1.date
+        g1.location, g2.location = g2.location, g1.location
+        g1.week_number, g2.week_number = g2.week_number, g1.week_number
+
+        g1.save(update_fields=['date', 'location', 'week_number'])
+        g2.save(update_fields=['date', 'location', 'week_number'])
+
+        messages.success(request, f"Successfully swapped slots between '{g1.team1.name} vs {g1.team2.name}' and '{g2.team1.name} vs {g2.team2.name}'.")
+
+    return redirect('schedule_grid', season_id=season.id)

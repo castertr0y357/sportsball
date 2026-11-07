@@ -30,6 +30,9 @@
         </p>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{% url 'user_calendar_ics' %}" class="btn btn-secondary" title="Sync all your games to Apple Calendar / Google Calendar">
+            📅 My Games (.ics)
+        </a>
         <a href="{% url 'league_list' %}" class="btn btn-secondary">Browse Leagues</a>
         <a href="{% url 'leaderboard' %}" class="btn btn-secondary">Stat Leaderboards</a>
     </div>

@@ -113,6 +113,15 @@ class Season(models.Model):
         blank=True,
         help_text="Direct PayPal.me link (e.g. https://paypal.me/gracechurch)"
     )
+    has_weather_buffer_week = models.BooleanField(
+        default=True,
+        help_text="Reserve a buffer week at end of regular season for rainout makeups"
+    )
+    schedule_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Saved schedule preferences (days, times, venues, blackouts)"
+    )
 
     class Meta:
         ordering = ['-current', '-start_date']

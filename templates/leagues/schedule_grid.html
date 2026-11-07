@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Master Schedule Grid | {{ season.name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 1100px; margin: 0 auto;">
+    <!-- Breadcrumb & Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                <a href="{% url 'season_detail' season.id %}" style="color: var(--accent);">&larr; Back to {{ season.name }}</a>
+                &middot; {{ season.league.name }} ({{ season.league.get_sport_display }})
+            </div>
+            <h1 style="margin: 0; font-size: 1.85rem;">📊 Master Schedule & Visual Grid</h1>
+            <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+                Full chronological season schedule with 1-tap weather rainout and slot management.
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <a href="{% url 'season_calendar_ics' season.id %}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.9rem;">
+                📅 Export / Subscribe (.ics)
+            </a>
+            {% if can_manage %}
+                <a href="{% url 'generate_schedule' season.id %}" class="btn btn-primary" style="font-size: 0.9rem;">
+                    ⚡ Auto-Generate Schedule
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Rainout Alert Banner (if games scheduled today) -->
+    {% if can_manage and today_games_count > 0 %}
+        <div class="card" style="margin-bottom: 1.5rem; background: rgba(245, 158, 11, 0.1); border: 2px solid #f59e0b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="font-size: 2rem;">🌧️</div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.1rem; color: #d97706;">Weather Warning: {{ today_games_count }} Game(s) Today</h3>
+                    <p style="margin: 0.2rem 0 0 0; font-size: 0.85rem; color: var(--text-muted);">
+                        Impending rain or severe weather? One click postpones today's games and automatically shifts them into the weather buffer week.
+                    </p>
+                </div>
+            </div>
+            <form method="post" action="{% url 'rainout_today_games' season.id %}" onsubmit="return confirm('Reschedule all of today\'s games to the buffer makeup week?');">
+                {% csrf_token %}
+                <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
+                <input type="hidden" name="action" value="reschedule_makeup">
+                <button type="submit" class="btn" style="background: #f59e0b; color: white; border: none; font-weight: 700;">
+                    🌧️ Rainout Today &amp; Move to Makeup Week
+                </button>
+            </form>
+        </div>
+    {% endif %}
+
+    <!-- Commissioner Slot Swapper Bar (Collapsible) -->
+    {% if can_manage and weeks %}
+        <details class="card" style="margin-bottom: 1.5rem; background: var(--bg-card); border: 1px solid var(--border-color);">
+            <summary style="font-weight: 600; cursor: pointer; font-size: 0.95rem; color: var(--accent); padding: 0.25rem 0;">
+                🔄 Commissioner 1-Click Game Slot Swapper (Swap Times &amp; Venues)
+            </summary>
+            <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0;">
+                    Need to accommodate a church facility conflict? Select two scheduled games to instantly swap their dates, times, and venues.
+                </p>
+                <form method="post" action="{% url 'swap_game_slots' season.id %}" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end;">
+                    {% csrf_token %}
+                    <div style="flex: 1; min-width: 250px;">
+                        <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem;">Game 1:</label>
+                        <select name="game1_id" class="form-input" style="width: 100%; font-size: 0.85rem;" required>
+                            <option value="">-- Select First Game --</option>
+                            {% for week_num, game_list in weeks %}
+                                <optgroup label="Week {{ week_num }}">
+                                    {% for g in game_list %}
+                                        <option value="{{ g.id }}">
+                                            Wk {{ week_num }}: {{ g.team1.name }} vs {{ g.team2.name }} ({{ g.date|date:"M j @ g:i A" }} - {{ g.location }})
+                                        </option>
+                                    {% endfor %}
+                                </optgroup>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div style="font-size: 1.25rem; align-self: center; padding-bottom: 0.25rem;">⇄</div>
+
+                    <div style="flex: 1; min-width: 250px;">
+                        <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem;">Game 2:</label>
+                        <select name="game2_id" class="form-input" style="width: 100%; font-size: 0.85rem;" required>
+                            <option value="">-- Select Second Game --</option>
+                            {% for week_num, game_list in weeks %}
+                                <optgroup label="Week {{ week_num }}">
+                                    {% for g in game_list %}
+                                        <option value="{{ g.id }}">
+                                            Wk {{ week_num }}: {{ g.team1.name }} vs {{ g.team2.name }} ({{ g.date|date:"M j @ g:i A" }} - {{ g.location }})
+                                        </option>
+                                    {% endfor %}
+                                </optgroup>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-secondary" style="height: 38px;">
+                        Swap Slots
+                    </button>
+                </form>
+            </div>
+        </details>
+    {% endif %}
+
+    <!-- Master Weeks Grid -->
+    {% if weeks %}
+        {% for week_num, game_list in weeks %}
+            <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.65rem; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                        <h2 style="margin: 0; font-size: 1.25rem;">Week {{ week_num }}</h2>
+                        {% if forloop.last and season.has_weather_buffer_week %}
+                            <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600;">
+                                🌧️ Weather Buffer / Makeup Week
+                            </span>
+                        {% endif %}
+                    </div>
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">
+                        {{ game_list|length }} Game{{ game_list|length|pluralize }}
+                    </span>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead>
+                            <tr style="text-align: left; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid var(--border-color);">
+                                <th style="padding: 0.5rem;">Date &amp; Time</th>
+                                <th style="padding: 0.5rem;">Venue</th>
+                                <th style="padding: 0.5rem;">Matchup</th>
+                                <th style="padding: 0.5rem;">Status / Score</th>
+                                <th style="padding: 0.5rem; text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in game_list %}
+                                <tr style="border-bottom: 1px solid var(--border-color); {% if g.status == 'postponed' %}background: rgba(245, 158, 11, 0.05);{% endif %}">
+                                    <td style="padding: 0.65rem 0.5rem; white-space: nowrap;">
+                                        <strong>{{ g.date|date:"D, M j" }}</strong>
+                                        <span style="display: block; font-size: 0.8rem; color: var(--text-muted);">
+                                            {{ g.date|date:"g:i A" }}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 0.65rem 0.5rem;">
+                                        <span style="display: inline-block; padding: 0.2rem 0.5rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem;">
+                                            📍 {{ g.location }}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 0.65rem 0.5rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                                            <a href="{% url 'team_detail' g.team1.id %}" style="color: var(--accent); text-decoration: none;">
+                                                {{ g.team1.name }}
+                                            </a>
+                                            <span style="color: var(--text-muted); font-weight: 400; font-size: 0.8rem;">vs</span>
+                                            <a href="{% url 'team_detail' g.team2.id %}" style="color: var(--text); text-decoration: none;">
+                                                {{ g.team2.name }}
+                                            </a>
+                                        </div>
+                                        {% if g.notes %}
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+                                                ℹ️ {{ g.notes }}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td style="padding: 0.65rem 0.5rem;">
+                                        {% if g.status == 'completed' %}
+                                            <span style="font-weight: 700; color: var(--text);">
+                                                {{ g.team1_score }} - {{ g.team2_score }}
+                                            </span>
+                                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Final</span>
+                                        {% elif g.status == 'in_progress' %}
+                                            <span style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">
+                                                🔴 LIVE ({{ g.team1_score }}-{{ g.team2_score }})
+                                            </span>
+                                        {% elif g.status == 'postponed' %}
+                                            <span style="background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid #d97706; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">
+                                                🌧️ Postponed / Rainout
+                                            </span>
+                                        {% else %}
+                                            <span style="color: var(--text-muted); font-size: 0.85rem;">
+                                                Scheduled
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="padding: 0.65rem 0.5rem; text-align: right; white-space: nowrap;">
+                                        <a href="{% url 'game_detail' g.id %}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">
+                                            Details
+                                        </a>
+                                        <a href="{% url 'gamecast' g.id %}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">
+                                            GameCast
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="card" style="text-align: center; padding: 3rem 1.5rem;">
+            <div style="font-size: 3rem; margin-bottom: 0.75rem;">📅</div>
+            <h2 style="margin: 0 0 0.5rem 0;">No Games Scheduled Yet</h2>
+            <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem auto;">
+                There are no scheduled games for this season yet. As a commissioner, you can auto-generate a balanced schedule with church service protections.
+            </p>
+            {% if can_manage %}
+                <a href="{% url 'generate_schedule' season.id %}" class="btn btn-primary">
+                    ⚡ Generate Schedule Now
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

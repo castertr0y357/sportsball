@@ -921,3 +921,175 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.church.refresh_from_db()
         self.assertEqual(self.church.commissioner, new_user)
         self.assertEqual(new_user.role, 'church_admin')
+
+    def test_smart_multi_slot_schedule_generation(self):
+        self.client.login(username="admin_user", password="password123")
+        tomorrow = timezone.localdate() + timedelta(days=1)
+
+        # 1. Test preview mode (no DB writes)
+        resp_preview = self.client.post(reverse('generate_schedule', args=[self.season.id]), {
+            'action': 'preview',
+            'start_date': tomorrow.strftime('%Y-%m-%d'),
+            'game_days': ['1', '3'],
+            'time_slots': '18:30, 19:45',
+            'venues': 'Court 1\nCourt 2',
+            'protect_wednesdays': True,
+            'protect_sunday_mornings': True,
+            'double_round_robin': False,
+            'add_weather_buffer': True,
+            'clear_existing_scheduled': True,
+        })
+        self.assertEqual(resp_preview.status_code, 200)
+        self.assertIsNotNone(resp_preview.context['preview_games'])
+        self.assertEqual(len(resp_preview.context['preview_games']), 6)
+        self.assertEqual(self.season.games.filter(game_type='regular').count(), 0)
+
+        # 2. Test generate mode (commits to DB)
+        resp_generate = self.client.post(reverse('generate_schedule', args=[self.season.id]), {
+            'action': 'generate',
+            'start_date': tomorrow.strftime('%Y-%m-%d'),
+            'game_days': ['1', '3'],
+            'time_slots': '18:30, 19:45',
+            'venues': 'Court 1\nCourt 2',
+            'protect_wednesdays': True,
+            'protect_sunday_mornings': True,
+            'double_round_robin': False,
+            'add_weather_buffer': True,
+            'clear_existing_scheduled': True,
+        })
+        self.assertEqual(resp_generate.status_code, 302)
+        self.assertEqual(self.season.games.filter(game_type='regular').count(), 6)
+
+        self.season.refresh_from_db()
+        self.assertTrue(self.season.has_weather_buffer_week)
+        self.assertIn('game_days', self.season.schedule_config)
+        self.assertEqual(self.season.schedule_config['game_days'], [1, 3])
+
+    def test_ics_calendar_feed_export(self):
+        # Create a sample game
+        game_dt = timezone.now() + timedelta(days=3)
+        game = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=game_dt,
+            location="Gym Court 1",
+            status="scheduled",
+            game_type="regular"
+        )
+
+        # 1. Team calendar feed
+        resp_team = self.client.get(reverse('team_calendar_ics', args=[self.team1.id]))
+        self.assertEqual(resp_team.status_code, 200)
+        self.assertIn('text/calendar', resp_team['Content-Type'])
+        content_str = resp_team.content.decode('utf-8')
+        self.assertIn('BEGIN:VCALENDAR', content_str)
+        self.assertIn('BEGIN:VEVENT', content_str)
+        self.assertIn('Gym Court 1', content_str)
+        self.assertIn(f'{self.team1.name} vs {self.team2.name}', content_str)
+
+        # 2. Season calendar feed
+        resp_season = self.client.get(reverse('season_calendar_ics', args=[self.season.id]))
+        self.assertEqual(resp_season.status_code, 200)
+        self.assertIn('text/calendar', resp_season['Content-Type'])
+        self.assertIn('BEGIN:VCALENDAR', resp_season.content.decode('utf-8'))
+
+        # 3. User calendar feed (anonymous forbidden)
+        resp_anon = self.client.get(reverse('user_calendar_ics'))
+        self.assertEqual(resp_anon.status_code, 403)
+
+        # User calendar feed (authenticated player)
+        self.team1.players.add(self.player_user)
+        self.client.login(username="player_user", password="password123")
+        resp_user = self.client.get(reverse('user_calendar_ics'))
+        self.assertEqual(resp_user.status_code, 200)
+        self.assertIn('text/calendar', resp_user['Content-Type'])
+        self.assertIn(self.team1.name, resp_user.content.decode('utf-8'))
+
+    def test_rainout_today_and_auto_makeup(self):
+        today = timezone.localdate()
+        today_dt = timezone.now()
+        game_today = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=today_dt,
+            location="Diamond #1",
+            status="scheduled",
+            game_type="regular",
+            week_number=1
+        )
+
+        # Non-commissioner cannot rain out
+        self.client.login(username="player_user", password="password123")
+        resp_denied = self.client.post(reverse('rainout_today_games', args=[self.season.id]))
+        self.assertEqual(resp_denied.status_code, 302)
+        game_today.refresh_from_db()
+        self.assertEqual(game_today.status, 'scheduled')
+        self.assertEqual(game_today.week_number, 1)
+
+        # Commissioner rains out today -> auto moves to makeup week
+        self.client.login(username="admin_user", password="password123")
+        resp_rainout = self.client.post(reverse('rainout_today_games', args=[self.season.id]), {
+            'action': 'reschedule_makeup',
+            'date': today.strftime('%Y-%m-%d'),
+        })
+        self.assertEqual(resp_rainout.status_code, 302)
+
+        game_today.refresh_from_db()
+        self.assertEqual(game_today.status, 'scheduled')
+        self.assertEqual(game_today.week_number, 2)
+        self.assertGreater(game_today.date, today_dt)
+        self.assertIn("Rescheduled from rainout", game_today.notes)
+
+    def test_schedule_grid_and_swap_game_slots(self):
+        g1 = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now() + timedelta(days=2),
+            location="Court 1",
+            status="scheduled",
+            game_type="regular",
+            week_number=1
+        )
+        g2 = Game.objects.create(
+            season=self.season,
+            team1=self.team3,
+            team2=self.team4,
+            date=timezone.now() + timedelta(days=5),
+            location="Court 2",
+            status="scheduled",
+            game_type="regular",
+            week_number=2
+        )
+
+        # Schedule grid view
+        resp_grid = self.client.get(reverse('schedule_grid', args=[self.season.id]))
+        self.assertEqual(resp_grid.status_code, 200)
+        self.assertContains(resp_grid, "Court 1")
+        self.assertContains(resp_grid, "Court 2")
+
+        # Non-commissioner slot swap forbidden/redirected
+        self.client.login(username="player_user", password="password123")
+        self.client.post(reverse('swap_game_slots', args=[self.season.id]), {
+            'game1_id': g1.id,
+            'game2_id': g2.id,
+        })
+        g1.refresh_from_db()
+        self.assertEqual(g1.location, "Court 1")
+
+        # Commissioner swaps slots
+        self.client.login(username="admin_user", password="password123")
+        resp_swap = self.client.post(reverse('swap_game_slots', args=[self.season.id]), {
+            'game1_id': g1.id,
+            'game2_id': g2.id,
+        })
+        self.assertEqual(resp_swap.status_code, 302)
+
+        g1.refresh_from_db()
+        g2.refresh_from_db()
+        self.assertEqual(g1.location, "Court 2")
+        self.assertEqual(g2.location, "Court 1")
+        self.assertEqual(g1.week_number, 2)
+        self.assertEqual(g2.week_number, 1)
