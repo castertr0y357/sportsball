@@ -160,6 +160,10 @@ class CustomUser(AbstractUser):
         return False
 
     @property
+    def officials_pools(self):
+        return getattr(self, 'officiating_seasons', None)
+
+    @property
     def display_name(self):
         full = self.get_full_name().strip()
         return full if full else self.username

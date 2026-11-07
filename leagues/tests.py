@@ -1499,3 +1499,19 @@ class ChurchSportsLeaguesTestSuite(TestCase):
 
         # Regular player still cannot score
         self.assertFalse(self.player_user.can_score_game(game))
+
+
+    def test_unsigned_user_home_dashboard(self):
+        unsigned_user = CustomUser.objects.create_user(
+            username="unverified@sportsball.local",
+            email="unverified@sportsball.local",
+            password="password123",
+            role="player",
+            waiver_signed=False,
+            church=self.church
+        )
+        self.client.login(username="unverified@sportsball.local", password="password123")
+        resp = self.client.get(reverse('home'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Liability Waiver &amp; Sportsmanship Covenant Required")
+        self.assertContains(resp, "Sign Waiver Now")

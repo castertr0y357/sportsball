@@ -90,7 +90,7 @@ def home(request):
             request.user.role in ['referee', 'admin', 'church_admin', 'coach']
             or request.user.is_overall_commissioner
             or request.user.officiating_assignments.exists()
-            or request.user.officials_pools.exists()
+            or request.user.officiating_seasons.exists()
         ):
             open_sub_assignments = GameOfficialAssignment.objects.filter(
                 status='declined',
