@@ -216,6 +216,16 @@
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
             <button type="button" class="btn btn-sm btn-accent" onclick="playCurrentWalkup()">&#9654; Play Walk-Up Now</button>
             <button type="button" class="btn btn-sm btn-secondary" onclick="stopWalkupAudio()">&#9632; Stop Music</button>
+            {% if game.team1.intro_track %}
+            <button type="button" class="btn btn-sm btn-secondary" onclick="playTeamIntro('team1')" title="Play {{ game.team1.name }} Walk-On Anthem">
+                🎺 {{ game.team1.name }} Intro
+            </button>
+            {% endif %}
+            {% if game.team2.intro_track %}
+            <button type="button" class="btn btn-sm btn-secondary" onclick="playTeamIntro('team2')" title="Play {{ game.team2.name }} Walk-On Anthem">
+                🎺 {{ game.team2.name }} Intro
+            </button>
+            {% endif %}
         </div>
         <div style="margin-top:0.65rem; font-size:0.84rem; color:#94a3b8;">
             On Deck: <strong style="color:#e2e8f0;" id="on-deck-batter-name">--</strong>

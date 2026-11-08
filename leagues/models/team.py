@@ -44,6 +44,14 @@ class Team(models.Model):
         db_index=True,
         help_text="Unique 1-tap player invite code"
     )
+    intro_track = models.ForeignKey(
+        'users.AudioTrack',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='teams_using_as_intro',
+        help_text="Official team walk-on / intro anthem across all sports"
+    )
 
     class Meta:
         ordering = ['name']
@@ -67,6 +75,50 @@ class Team(models.Model):
         if request:
             return request.build_absolute_uri(path)
         return path
+
+    def get_active_intro(self) -> dict:
+        """
+        Returns active team intro anthem dictionary:
+        {'title': str, 'url': str, 'start': float, 'duration': float, 'is_vetoed': bool, 'veto_reason': str}
+        """
+        if self.intro_track:
+            track = self.intro_track
+            if track.is_vetoed:
+                if track.replacement_track and not track.replacement_track.is_vetoed:
+                    url, start, dur = track.replacement_track.get_effective_playback()
+                    return {
+                        'title': track.replacement_track.title,
+                        'url': url,
+                        'start': start,
+                        'duration': dur,
+                        'is_vetoed': False,
+                        'veto_reason': '',
+                    }
+                return {
+                    'title': track.title,
+                    'url': '',
+                    'start': 0.0,
+                    'duration': 0.0,
+                    'is_vetoed': True,
+                    'veto_reason': track.veto_reason,
+                }
+            url, start, dur = track.get_effective_playback()
+            return {
+                'title': track.title,
+                'url': url,
+                'start': start,
+                'duration': dur,
+                'is_vetoed': False,
+                'veto_reason': '',
+            }
+        return {
+            'title': '',
+            'url': '',
+            'start': 0.0,
+            'duration': 0.0,
+            'is_vetoed': False,
+            'veto_reason': '',
+        }
 
     def __str__(self):
         return f"{self.name} ({self.season.name})"
@@ -144,6 +196,50 @@ class SeasonRegistration(models.Model):
     class Meta:
         unique_together = [('season', 'player')]
         ordering = ['-created_at']
+
+    def get_active_intro(self) -> dict:
+        """
+        Returns active team intro anthem dictionary:
+        {'title': str, 'url': str, 'start': float, 'duration': float, 'is_vetoed': bool, 'veto_reason': str}
+        """
+        if self.intro_track:
+            track = self.intro_track
+            if track.is_vetoed:
+                if track.replacement_track and not track.replacement_track.is_vetoed:
+                    url, start, dur = track.replacement_track.get_effective_playback()
+                    return {
+                        'title': track.replacement_track.title,
+                        'url': url,
+                        'start': start,
+                        'duration': dur,
+                        'is_vetoed': False,
+                        'veto_reason': '',
+                    }
+                return {
+                    'title': track.title,
+                    'url': '',
+                    'start': 0.0,
+                    'duration': 0.0,
+                    'is_vetoed': True,
+                    'veto_reason': track.veto_reason,
+                }
+            url, start, dur = track.get_effective_playback()
+            return {
+                'title': track.title,
+                'url': url,
+                'start': start,
+                'duration': dur,
+                'is_vetoed': False,
+                'veto_reason': '',
+            }
+        return {
+            'title': '',
+            'url': '',
+            'start': 0.0,
+            'duration': 0.0,
+            'is_vetoed': False,
+            'veto_reason': '',
+        }
 
     def __str__(self):
         target = self.preferred_team.name if self.preferred_team else "Free Agent"

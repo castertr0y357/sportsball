@@ -99,6 +99,60 @@ class CustomUser(AbstractUser):
         default=12,
         help_text="How many seconds the walk-up clip should play (e.g., 12 seconds)"
     )
+    active_walkup_track = models.ForeignKey(
+        'users.AudioTrack',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        help_text="Active precision walk-up track"
+    )
+
+    def get_active_walkup(self) -> dict:
+        """
+        Returns active walk-up audio playback dictionary:
+        {'title': str, 'url': str, 'start': float, 'duration': float, 'is_vetoed': bool, 'veto_reason': str}
+        """
+        if self.active_walkup_track:
+            track = self.active_walkup_track
+            if track.is_vetoed:
+                if track.replacement_track and not track.replacement_track.is_vetoed:
+                    url, start, dur = track.replacement_track.get_effective_playback()
+                    return {
+                        'title': track.replacement_track.title,
+                        'url': url,
+                        'start': start,
+                        'duration': dur,
+                        'is_vetoed': False,
+                        'veto_reason': '',
+                    }
+                return {
+                    'title': track.title,
+                    'url': '',
+                    'start': 0.0,
+                    'duration': 0.0,
+                    'is_vetoed': True,
+                    'veto_reason': track.veto_reason,
+                }
+            url, start, dur = track.get_effective_playback()
+            return {
+                'title': track.title,
+                'url': url,
+                'start': start,
+                'duration': dur,
+                'is_vetoed': False,
+                'veto_reason': '',
+            }
+
+        url = self.walkup_song_file.url if self.walkup_song_file else ''
+        return {
+            'title': self.walkup_song_title,
+            'url': url,
+            'start': float(self.walkup_start_seconds or 0),
+            'duration': float(self.walkup_duration_seconds or 12),
+            'is_vetoed': False,
+            'veto_reason': '',
+        }
 
     def sign_waiver(self, signature_name: str):
         self.waiver_signed = True

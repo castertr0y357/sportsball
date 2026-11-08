@@ -21,17 +21,20 @@ COUNT_TERMINATING_ACTIONS = (
 
 
 def serialize_batter(player) -> Optional[dict[str, Any]]:
-    """Serializes the current batter profile and walk-up music data."""
+    """Serializes the current batter profile and walk-up music data with sub-second precision."""
     if not player:
         return None
+    walkup = player.get_active_walkup()
     return {
         'id': player.id,
         'name': player.display_name,
         'jersey_number': player.jersey_number,
-        'walkup_song_title': player.walkup_song_title or '',
-        'walkup_song_url': player.walkup_song_file.url if player.walkup_song_file else '',
-        'walkup_start_seconds': player.walkup_start_seconds,
-        'walkup_duration_seconds': player.walkup_duration_seconds,
+        'walkup_song_title': walkup.get('title', ''),
+        'walkup_song_url': walkup.get('url', ''),
+        'walkup_start_seconds': walkup.get('start', 0.0),
+        'walkup_duration_seconds': walkup.get('duration', 12.0),
+        'is_vetoed': walkup.get('is_vetoed', False),
+        'veto_reason': walkup.get('veto_reason', ''),
     }
 
 
@@ -69,8 +72,12 @@ def serialize_game_state(game: Game) -> dict[str, Any]:
         }
         for e in game.lineup_entries.filter(team=game.team2).select_related('player').order_by('batting_order', 'id')
     ]
+    team1_intro = game.team1.get_active_intro() if game.team1 else {}
+    team2_intro = game.team2.get_active_intro() if game.team2 else {}
     return {
         'game_id': game.id,
+        'team1_intro': team1_intro,
+        'team2_intro': team2_intro,
         'status': game.status,
         'status_display': game.get_status_display(),
         'team1_name': game.team1.name,

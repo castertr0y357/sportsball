@@ -18,6 +18,9 @@
         <a href="{% url 'team_safety_roster' team.id %}" class="btn btn-secondary" title="Printable Safety & Emergency Contact Sheet" target="_blank">
             🩹 Safety &amp; Emergency Roster
         </a>
+        <a href="/profile/audio-studio/?tab=team_anthems&team_id={{ team.id }}" class="btn btn-secondary" title="Set Official Team Entrance Anthem">
+            🎺 Team Entrance Anthem
+        </a>
         <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
     </div>
 </div>

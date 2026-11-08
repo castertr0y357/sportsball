@@ -235,8 +235,30 @@ function playCurrentWalkup() {
     stopWalkupAudio();
 
     audio.src = batter.walkup_song_url;
-    const startSec = batter.walkup_start_seconds || 0;
-    const durationSec = batter.walkup_duration_seconds || 12;
+    const startSec = parseFloat(batter.walkup_start_seconds) || 0;
+    const durationSec = parseFloat(batter.walkup_duration_seconds) || 12;
+
+    audio.onloadedmetadata = () => {
+        audio.currentTime = Math.min(startSec, Math.max(0, audio.duration - 1));
+        audio.volume = 1.0;
+        audio.play().catch(() => {});
+    };
+    audio.load();
+
+    walkupTimer = setTimeout(() => {
+        stopWalkupAudio();
+    }, durationSec * 1000);
+}
+
+function playTeamIntro(whichTeam) {
+    const intro = whichTeam === 'team1' ? gameState.team1_intro : gameState.team2_intro;
+    if (!intro || !intro.url) return;
+    const audio = document.getElementById('dugout-walkup-audio');
+    stopWalkupAudio();
+
+    audio.src = intro.url;
+    const startSec = parseFloat(intro.start) || 0;
+    const durationSec = parseFloat(intro.duration) || 15;
 
     audio.onloadedmetadata = () => {
         audio.currentTime = Math.min(startSec, Math.max(0, audio.duration - 1));

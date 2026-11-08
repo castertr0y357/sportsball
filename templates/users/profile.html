@@ -41,7 +41,8 @@
                     </button>
                 {% endif %}
             </form>
-            <a href="{% url 'edit_profile' %}" class="btn btn-secondary">Edit Profile &amp; Walk-Up Song</a>
+            <a href="{% url 'audio_studio' %}" class="btn btn-primary" title="Launch Precision Walk-Up Audio Studio">🎙️ Walk-Up &amp; Anthem Studio</a>
+            <a href="{% url 'edit_profile' %}" class="btn btn-secondary">Edit Profile</a>
             {% if not profile_user.waiver_signed %}
                 <a href="{% url 'sign_waiver' %}" class="btn btn-accent">Sign Liability Waiver</a>
             {% endif %}

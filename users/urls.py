@@ -1,15 +1,16 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
-from . import views
-from .forms import EmailAuthenticationForm
+from users import views
+from users.forms import EmailAuthenticationForm
 
 urlpatterns = [
-    path('register/', views.register, name='register'),
+    path('register/', views.UserRegisterView.as_view(), name='register'),
     path('login/', auth_views.LoginView.as_view(
         template_name='users/login.html',
         authentication_form=EmailAuthenticationForm
     ), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+
     # Password Reset Flow (Gmail SMTP / Console)
     path('password-reset/', auth_views.PasswordResetView.as_view(
         template_name='users/password_reset.html',
@@ -25,11 +26,21 @@ urlpatterns = [
     path('password-reset-complete/', auth_views.PasswordResetCompleteView.as_view(
         template_name='users/password_reset_complete.html'
     ), name='password_reset_complete'),
-    path('profile/', views.profile, name='profile'),
-    path('profile/edit/', views.edit_profile, name='edit_profile'),
-    path('profile/waiver/', views.sign_waiver, name='sign_waiver'),
-    path('minors/<int:minor_id>/waiver/', views.sign_parental_waiver_view, name='sign_parental_waiver'),
-    path('players/<int:user_id>/', views.player_detail, name='player_detail'),
-    path('free-agents/', views.free_agent_list, name='free_agent_list'),
-    path('profile/toggle-sub/', views.toggle_sub_availability, name='toggle_sub_availability'),
+
+    # Player Profile & Waivers
+    path('profile/', views.UserProfileView.as_view(), name='profile'),
+    path('profile/edit/', views.EditProfileView.as_view(), name='edit_profile'),
+    path('profile/waiver/', views.SignWaiverView.as_view(), name='sign_waiver'),
+    path('minors/<int:minor_id>/waiver/', views.SignParentalWaiverView.as_view(), name='sign_parental_waiver'),
+    path('players/<int:user_id>/', views.PlayerDetailView.as_view(), name='player_detail'),
+    path('free-agents/', views.FreeAgentListView.as_view(), name='free_agent_list'),
+    path('profile/toggle-sub/', views.ToggleSubAvailabilityView.as_view(), name='toggle_sub_availability'),
+
+    # Precision Walk-Up & Team Intro Audio Studio
+    path('profile/audio-studio/', views.AudioStudioView.as_view(), name='audio_studio'),
+    path('profile/audio-studio/upload/', views.AudioUploadTrimView.as_view(), name='audio_upload_trim'),
+    path('profile/audio-studio/<int:track_id>/set-active/', views.AudioSetActiveView.as_view(), name='audio_set_active'),
+    path('profile/audio-studio/<int:track_id>/adopt/', views.AudioAdoptJukeboxView.as_view(), name='audio_adopt_jukebox'),
+    path('profile/audio-studio/<int:track_id>/veto/', views.AudioVetoView.as_view(), name='audio_veto'),
+    path('profile/audio-studio/<int:track_id>/delete/', views.AudioDeleteView.as_view(), name='audio_delete'),
 ]

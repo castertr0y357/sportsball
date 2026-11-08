@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Walk-Up &amp; Team Anthem Studio &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+
+    <!-- Studio Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                <span>🎙️</span> Ballpark Audio Studio
+            </h1>
+            <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
+                Precision walk-up songs &amp; team walk-on anthems with sub-second trimming (0.1s) and League Jukebox.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{% url 'profile' %}" class="btn btn-secondary">&larr; Back to Profile</a>
+        </div>
+    </div>
+
+    <!-- Vetoed Notification Alert -->
+    {% if vetoed_tracks %}
+    <div class="card" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); margin-bottom: 1.5rem; padding: 1.25rem;">
+        <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+            <span style="font-size: 1.5rem;">⚠️</span>
+            <div>
+                <h4 style="margin: 0 0 0.35rem 0; color: #ef4444; font-size: 1.05rem;">Notice Regarding Walk-Up Audio</h4>
+                {% for vt in vetoed_tracks %}
+                <p style="margin: 0.2rem 0; font-size: 0.9rem;">
+                    <strong>"{{ vt.title }}"</strong> was flagged by <em>{{ vt.vetoed_by.display_name|default:"League Officials" }}</em>.
+                    <br>
+                    <span style="color: var(--text-muted);">Reason: "{{ vt.veto_reason|default:"Inappropriate or unedifying content" }}"</span>
+                    {% if vt.replacement_track %}
+                    <br>
+                    <span style="color: #38bdf8;">Assigned Replacement: "{{ vt.replacement_track.title }}"</span>
+                    {% endif %}
+                </p>
+                {% endfor %}
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: var(--text-muted);">
+                    Please choose a pre-cleared track from the League Jukebox or upload a new cut that aligns with league sportsmanship guidelines.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Studio Navigation Tabs -->
+    <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+        <button type="button" class="studio-tab-btn {% if initial_tab == 'my_clips' %}active{% endif %}" onclick="switchStudioTab('my_clips')">
+            ⚾ My Walk-Up Clips ({{ my_tracks|length }})
+        </button>
+        {% if managed_teams %}
+        <button type="button" class="studio-tab-btn {% if initial_tab == 'team_anthems' %}active{% endif %}" onclick="switchStudioTab('team_anthems')">
+            🏆 Team Intros &amp; Anthems
+        </button>
+        {% endif %}
+        <button type="button" class="studio-tab-btn {% if initial_tab == 'upload_trim' %}active{% endif %}" onclick="switchStudioTab('upload_trim')">
+            ✂️ Upload &amp; Precision Cut (0.1s)
+        </button>
+        <button type="button" class="studio-tab-btn {% if initial_tab == 'jukebox' %}active{% endif %}" onclick="switchStudioTab('jukebox')">
+            🎵 League Jukebox ({{ jukebox_tracks|length }})
+        </button>
+    </div>
+
+    <!-- Hidden Audio Player for Previewing -->
+    <audio id="trimmerAudio" preload="auto"></audio>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 1: My Walk-Up Clips -->
+    <!-- ========================================================================= -->
+    <div id="tab_my_clips" class="studio-tab-content" style="display: {% if initial_tab == 'my_clips' %}block{% else %}none{% endif %};">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;">
+                <h3 style="margin: 0; font-size: 1.2rem;">My Personal Walk-Up Cuts</h3>
+                <button type="button" class="btn btn-accent btn-sm" onclick="switchStudioTab('upload_trim')">
+                    + Add New Walk-Up Cut
+                </button>
+            </div>
+
+            {% if my_tracks %}
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                {% for track in my_tracks %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-radius: var(--radius); background: var(--surface); border: 1px solid {% if track == active_walkup %}var(--primary){% elif track.is_vetoed %}#ef4444{% else %}var(--border){% endif %}; flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <strong style="font-size: 1.05rem;">{{ track.title }}</strong>
+                            {% if track == active_walkup %}
+                                <span class="badge badge-primary">⭐ Active Game-Day Track</span>
+                            {% endif %}
+                            {% if track.is_vetoed %}
+                                <span class="badge" style="background: #ef4444; color: #fff;">🚫 Vetoed</span>
+                            {% elif track.is_public_jukebox %}
+                                <span class="badge badge-secondary" style="font-size: 0.75rem;">Shared to Jukebox</span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+                            Starts at {{ track.start_seconds|floatformat:1 }}s &bull; Plays for <strong>{{ track.duration_seconds|floatformat:1 }}s</strong>
+                            {% if track.is_vetoed %}
+                                &bull; <span style="color: #ef4444;">Veto reason: "{{ track.veto_reason }}"</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="playSingleTrack('{{ track.audio_file.url }}', {{ track.start_seconds }}, {{ track.duration_seconds }}, this)">
+                            ▶️ Play Sample
+                        </button>
+                        {% if not track.is_vetoed and track != active_walkup %}
+                        <form method="post" action="{% url 'audio_set_active' track.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary btn-sm">Set Active</button>
+                        </form>
+                        {% endif %}
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="loadTrackIntoTrimmer('{{ track.audio_file.url }}', '{{ track.title|escapejs }}', {{ track.start_seconds }}, {{ track.duration_seconds }}, {{ track.id }})">
+                            ✂️ Re-Trim
+                        </button>
+                        <form method="post" action="{% url 'audio_delete' track.id %}" style="display: inline;" onsubmit="return confirm('Delete this cut?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-secondary btn-sm" style="color: #ef4444;">Delete</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+                <span style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem;">🎶</span>
+                <p style="margin: 0; font-size: 1.05rem;">You haven't uploaded or trimmed any walk-up songs yet.</p>
+                <div style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1rem;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="switchStudioTab('upload_trim')">
+                        Upload &amp; Cut Song
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="switchStudioTab('jukebox')">
+                        Pick from League Jukebox
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: Team Intro Anthems (Coaches / Captains) -->
+    <!-- ========================================================================= -->
+    {% if managed_teams %}
+    <div id="tab_team_anthems" class="studio-tab-content" style="display: {% if initial_tab == 'team_anthems' %}block{% else %}none{% endif %};">
+        <div class="card">
+            <div style="margin-bottom: 1.25rem;">
+                <h3 style="margin: 0; font-size: 1.2rem;">Official Team Walk-On / Intro Anthems</h3>
+                <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                    Plays when starting matches and during starting lineup introductions across all sports (Basketball, Volleyball, Soccer, Flag Football, Softball).
+                </p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                {% for team in managed_teams %}
+                <div style="border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; background: var(--surface);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 1.1rem; color: #38bdf8;">{{ team.name }}</h4>
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                {{ team.league.name }} &bull; Sport: <strong>{{ team.league.sport|title }}</strong> &bull; Church: {{ team.church.name|default:"Independent" }}
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            {% if team.intro_track %}
+                                <span class="badge badge-primary">Anthem Configured</span>
+                            {% else %}
+                                <span class="badge badge-secondary">No Intro Anthem</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(0,0,0,0.15); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        {% if team.intro_track %}
+                        <div>
+                            <strong>{{ team.intro_track.title }}</strong>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                Plays from {{ team.intro_track.start_seconds|floatformat:1 }}s for {{ team.intro_track.duration_seconds|floatformat:1 }}s
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="playSingleTrack('{{ team.intro_track.audio_file.url }}', {{ team.intro_track.start_seconds }}, {{ team.intro_track.duration_seconds }}, this)">
+                                ▶️ Play Anthem
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="prepareTeamTrim('{{ team.id }}', '{{ team.name|escapejs }}')">
+                                ✂️ Change / Cut Anthem
+                            </button>
+                        </div>
+                        {% else %}
+                        <div style="color: var(--text-muted); font-size: 0.9rem;">
+                            No entrance anthem selected yet for {{ team.name }}.
+                        </div>
+                        <button type="button" class="btn btn-accent btn-sm" onclick="prepareTeamTrim('{{ team.id }}', '{{ team.name|escapejs }}')">
+                            + Set Team Intro Anthem
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: Upload & Precision Audio Trimmer (0.1s Dual Slider) -->
+    <!-- ========================================================================= -->
+    <div id="tab_upload_trim" class="studio-tab-content" style="display: {% if initial_tab == 'upload_trim' %}block{% else %}none{% endif %};">
+        <div class="card">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">Precision Audio Trimmer &amp; Waveform Studio</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0;">
+                Drag the dual sliders or use the fine-tuning <strong>&plusmn;0.1s</strong> nudge buttons to cut your track with sub-second accuracy (e.g. 13.4s).
+            </p>
+
+            <form method="post" action="{% url 'audio_upload_trim' %}" enctype="multipart/form-data" id="trimmerForm">
+                {% csrf_token %}
+                <input type="hidden" name="source_track_id" id="sourceTrackId" value="">
+                <input type="hidden" name="start_seconds" id="id_start_seconds" value="0.0">
+                <input type="hidden" name="duration_seconds" id="id_duration_seconds" value="12.0">
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <div>
+                        <label for="trackTitleInput" style="display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.35rem;">
+                            Song Title &amp; Artist
+                        </label>
+                        <input type="text" name="title" id="trackTitleInput" class="form-control" placeholder="e.g. Survivor - Eye of the Tiger" required
+                               style="width: 100%; padding: 0.6rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);">
+                    </div>
+
+                    <div>
+                        <label for="trackTypeSelect" style="display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.35rem;">
+                            Cut Type
+                        </label>
+                        <select name="track_type" id="trackTypeSelect" class="form-control" onchange="toggleTeamSelector()"
+                                style="width: 100%; padding: 0.6rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);">
+                            <option value="player_walkup">Player Walk-Up Song (Softball / Baseball)</option>
+                            {% if managed_teams %}
+                            <option value="team_intro" {% if initial_tab == 'team_anthems' or selected_team_id %}selected{% endif %}>Team Intro Anthem (All Sports)</option>
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    {% if managed_teams %}
+                    <div id="teamSelectorGroup" style="display: {% if initial_tab == 'team_anthems' or selected_team_id %}block{% else %}none{% endif %};">
+                        <label for="targetTeamSelect" style="display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.35rem;">
+                            Assign to Team
+                        </label>
+                        <select name="team_id" id="targetTeamSelect" class="form-control"
+                                style="width: 100%; padding: 0.6rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);">
+                            {% for t in managed_teams %}
+                            <option value="{{ t.id }}" {% if selected_team_id == t.id|stringformat:"i" %}selected{% endif %}>{{ t.name }} ({{ t.league.sport|title }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- File Upload Field -->
+                <div id="fileUploadContainer" style="margin-bottom: 1.25rem;">
+                    <label for="audioFileInput" style="display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.35rem;">
+                        Select Audio File (.mp3, .wav, .m4a, .ogg &bull; max 8MB)
+                    </label>
+                    <input type="file" id="audioFileInput" name="audio_file" accept="audio/*" class="form-control"
+                           style="width: 100%; padding: 0.5rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius);">
+                </div>
+
+                <!-- Waveform Canvas Container -->
+                <div style="background: #0f172a; border-radius: 8px; padding: 1rem; border: 1px solid #1e293b; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem; color: #94a3b8;">
+                        <span>Audio Waveform &bull; Drag to zoom/seek</span>
+                        <span id="trimmerReadout" style="font-family: monospace; color: #38bdf8; font-weight: 700;">0:00.0 &rarr; 0:12.0 (12.0s)</span>
+                    </div>
+
+                    <div style="width: 100%; overflow: hidden; border-radius: 6px;">
+                        <canvas id="waveformCanvas" style="width: 100%; height: 100px; display: block; cursor: crosshair;"></canvas>
+                    </div>
+
+                    <!-- Dual Sliders overlaid on waveform -->
+                    <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.75rem; width: 65px; color: #94a3b8;">Start Time:</span>
+                            <input type="range" id="trimStartSlider" min="0" max="60" step="0.1" value="0.0" style="flex: 1;">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.75rem; width: 65px; color: #94a3b8;">End Time:</span>
+                            <input type="range" id="trimEndSlider" min="0" max="60" step="0.1" value="12.0" style="flex: 1;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Precision Fine-Tuning Controls -->
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between; background: var(--surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 1.25rem;">
+                    <!-- Start Point -->
+                    <div style="display: flex; align-items: center; gap: 0.35rem;">
+                        <span style="font-size: 0.85rem; font-weight: 600;">Start:</span>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnStartMinus">-0.1s</button>
+                        <input type="number" id="trimStartInput" step="0.1" min="0" value="0.0"
+                               style="width: 75px; text-align: center; padding: 0.35rem; font-family: monospace; background: var(--background); border: 1px solid var(--border); border-radius: 4px;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnStartPlus">+0.1s</button>
+                    </div>
+
+                    <!-- End Point -->
+                    <div style="display: flex; align-items: center; gap: 0.35rem;">
+                        <span style="font-size: 0.85rem; font-weight: 600;">End:</span>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnEndMinus">-0.1s</button>
+                        <input type="number" id="trimEndInput" step="0.1" min="1" value="12.0"
+                               style="width: 75px; text-align: center; padding: 0.35rem; font-family: monospace; background: var(--background); border: 1px solid var(--border); border-radius: 4px;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnEndPlus">+0.1s</button>
+                    </div>
+
+                    <!-- Duration Badge -->
+                    <div style="text-align: right;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Total Duration:</span>
+                        <span id="trimDurationDisplay" style="font-size: 1.15rem; font-weight: 800; color: #f59e0b; font-family: monospace;">12.0s</span>
+                    </div>
+                </div>
+
+                <!-- Options & Submit -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer;">
+                        <input type="checkbox" name="is_public_jukebox" checked style="width: auto;">
+                        Share track with Church &amp; League Jukebox
+                    </label>
+
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button type="button" class="btn btn-secondary" id="btnPreviewClip">
+                            ▶️ Preview Cut (12.0s)
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="btnStopClip" style="display: none;">
+                            ⏹️ Stop
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            💾 Save &amp; Activate Cut
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: League & Church Jukebox -->
+    <!-- ========================================================================= -->
+    <div id="tab_jukebox" class="studio-tab-content" style="display: {% if initial_tab == 'jukebox' %}block{% else %}none{% endif %};">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.2rem;">League &amp; Church Jukebox</h3>
+                    <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                        Pre-cleared songs and hype anthems uploaded by teammates and fellow church members. 1-click adopt with zero upload friction!
+                    </p>
+                </div>
+                <div>
+                    <input type="text" id="jukeboxSearch" placeholder="🔍 Search songs..." onkeyup="filterJukebox()"
+                           style="padding: 0.45rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); font-size: 0.85rem;">
+                </div>
+            </div>
+
+            {% if jukebox_tracks %}
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;" id="jukeboxList">
+                {% for track in jukebox_tracks %}
+                <div class="jukebox-item" data-title="{{ track.title|lower }}"
+                     style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <strong style="font-size: 1.05rem;">{{ track.title }}</strong>
+                            <span class="badge badge-secondary" style="font-size: 0.75rem;">{{ track.duration_seconds|floatformat:1 }}s</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+                            Cut: {{ track.start_seconds|floatformat:1 }}s &rarr; {{ track.end_seconds|floatformat:1 }}s &bull; Shared by {{ track.user.display_name|default:track.team.name }}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="playSingleTrack('{{ track.audio_file.url }}', {{ track.start_seconds }}, {{ track.duration_seconds }}, this)">
+                            ▶️ Sample
+                        </button>
+                        <form method="post" action="{% url 'audio_adopt_jukebox' track.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary btn-sm" title="Use as your personal walk-up song">
+                                ⚡ Use as Walk-Up
+                            </button>
+                        </form>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="loadTrackIntoTrimmer('{{ track.audio_file.url }}', '{{ track.title|escapejs }}', {{ track.start_seconds }}, {{ track.duration_seconds }}, {{ track.id }})">
+                            ✂️ Re-Cut (0.1s)
+                        </button>
+
+                        {% if can_moderate %}
+                        <!-- 1-Click Veto Moderation for Coaches and Officials -->
+                        <button type="button" class="btn btn-secondary btn-sm" style="color: #ef4444;" onclick="openVetoModal({{ track.id }}, '{{ track.title|escapejs }}')">
+                            🚫 Veto Song
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+                <span style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem;">📻</span>
+                <p style="margin: 0; font-size: 1.05rem;">The Jukebox is currently empty. Be the first to share a track!</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- Coach & Official Veto Modal -->
+<!-- ========================================================================= -->
+<div id="vetoModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; align-items: center; justify-content: center; padding: 1rem;">
+    <div class="card" style="max-width: 500px; width: 100%; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+        <h3 style="margin: 0 0 0.5rem 0; color: #ef4444; font-size: 1.25rem;">🚫 Veto Audio Track</h3>
+        <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0;">
+            As a coach or league official, you can veto an unedifying song and optionally assign an approved replacement track.
+        </p>
+
+        <form method="post" id="vetoForm" action="">
+            {% csrf_token %}
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;">Track Name</label>
+                <input type="text" id="vetoTrackTitle" class="form-control" readonly style="width: 100%; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: var(--radius);">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;">Reason for Veto</label>
+                <textarea name="veto_reason" class="form-control" rows="2" placeholder="e.g. Inappropriate lyrics, explicit content, unedifying themes" required
+                          style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background);"></textarea>
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;">Assign Replacement Track (Optional)</label>
+                <select name="replacement_track_id" class="form-control" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background);">
+                    <option value="">-- No replacement (Silence song) --</option>
+                    {% for at in all_approved_tracks %}
+                    <option value="{{ at.id }}">{{ at.title }} ({{ at.duration_seconds|floatformat:1 }}s)</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeVetoModal()">Cancel</button>
+                <button type="submit" class="btn" style="background: #ef4444; color: #fff;">Confirm Veto</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.studio-tab-btn {
+    background: transparent;
+    border: none;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.studio-tab-btn:hover {
+    color: var(--text);
+}
+.studio-tab-btn.active {
+    color: var(--primary);
+    border-bottom: 3px solid var(--primary);
+}
+</style>
+
+<script src="{% static 'js/audio_trimmer.js' %}"></script>
+<script>
+let trimmer = null;
+let singleAudio = null;
+let singleTimer = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    trimmer = new AudioTrimmer({
+        fileInputId: 'audioFileInput',
+        canvasId: 'waveformCanvas',
+        startSliderId: 'trimStartSlider',
+        endSliderId: 'trimEndSlider',
+        startInputId: 'trimStartInput',
+        endInputId: 'trimEndInput',
+        durationDisplayId: 'trimDurationDisplay',
+        hiddenStartId: 'id_start_seconds',
+        hiddenDurationId: 'id_duration_seconds',
+        playBtnId: 'btnPreviewClip',
+        stopBtnId: 'btnStopClip',
+        audioPlayerId: 'trimmerAudio',
+        maxClipDuration: 25.0
+    });
+});
+
+function switchStudioTab(tabName) {
+    document.querySelectorAll('.studio-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.studio-tab-btn').forEach(btn => btn.classList.remove('active'));
+
+    const target = document.getElementById('tab_' + tabName);
+    if (target) target.style.display = 'block';
+
+    const btn = Array.from(document.querySelectorAll('.studio-tab-btn')).find(b => b.getAttribute('onclick').includes(tabName));
+    if (btn) btn.classList.add('active');
+
+    if (tabName === 'upload_trim' && trimmer) {
+        setTimeout(() => trimmer.drawWaveform(), 50);
+    }
+}
+
+function toggleTeamSelector() {
+    const type = document.getElementById('trackTypeSelect').value;
+    const group = document.getElementById('teamSelectorGroup');
+    if (group) {
+        group.style.display = (type === 'team_intro') ? 'block' : 'none';
+    }
+}
+
+function prepareTeamTrim(teamId, teamName) {
+    switchStudioTab('upload_trim');
+    const typeSelect = document.getElementById('trackTypeSelect');
+    if (typeSelect) {
+        typeSelect.value = 'team_intro';
+        toggleTeamSelector();
+    }
+    const teamSelect = document.getElementById('targetTeamSelect');
+    if (teamSelect) teamSelect.value = teamId;
+    const titleInput = document.getElementById('trackTitleInput');
+    if (titleInput) titleInput.value = `${teamName} Intro Anthem`;
+}
+
+function loadTrackIntoTrimmer(url, title, start, dur, sourceId) {
+    switchStudioTab('upload_trim');
+    document.getElementById('trackTitleInput').value = title;
+    document.getElementById('sourceTrackId').value = sourceId || '';
+    if (trimmer) {
+        trimmer.loadFromUrl(url, start, dur);
+    }
+}
+
+function playSingleTrack(url, startSec, durSec, btn) {
+    if (!singleAudio) {
+        singleAudio = new Audio();
+    }
+    if (singleTimer) clearTimeout(singleTimer);
+
+    if (!singleAudio.paused && singleAudio.currentSrc === url) {
+        singleAudio.pause();
+        if (btn) btn.textContent = '▶️ Play Sample';
+        return;
+    }
+
+    singleAudio.src = url;
+    singleAudio.currentTime = parseFloat(startSec) || 0;
+    singleAudio.volume = 1.0;
+    singleAudio.play().then(() => {
+        if (btn) btn.textContent = '⏸️ Stop';
+        singleTimer = setTimeout(() => {
+            singleAudio.pause();
+            if (btn) btn.textContent = '▶️ Play Sample';
+        }, (parseFloat(durSec) || 12) * 1000);
+    }).catch(err => console.warn(err));
+}
+
+function filterJukebox() {
+    const q = document.getElementById('jukeboxSearch').value.toLowerCase().trim();
+    document.querySelectorAll('.jukebox-item').forEach(el => {
+        const title = el.getAttribute('data-title') || '';
+        el.style.display = title.includes(q) ? 'flex' : 'none';
+    });
+}
+
+function openVetoModal(trackId, trackTitle) {
+    document.getElementById('vetoTrackTitle').value = trackTitle;
+    document.getElementById('vetoForm').action = `/profile/audio-studio/${trackId}/veto/`;
+    document.getElementById('vetoModal').style.display = 'flex';
+}
+
+function closeVetoModal() {
+    document.getElementById('vetoModal').style.display = 'none';
+}
+</script>
+{% endblock %}

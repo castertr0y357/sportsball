@@ -1,7 +1,8 @@
 """
-Users models package defining CustomUser and profile attributes.
+Users models package defining CustomUser, profile attributes, and precision AudioTracks.
 """
 
 from .user import CustomUser
+from .walkup import AudioTrack
 
-__all__ = ['CustomUser']
+__all__ = ['CustomUser', 'AudioTrack']

@@ -103,6 +103,32 @@ function submitGameRsvp(responseVal) {
     </div>
 </div>
 
+{% if game.team1.intro_track or game.team2.intro_track %}
+<!-- Team Entrance Anthems (All Sports) -->
+<div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(245,158,11,0.08)); border:1px solid var(--border); padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <div>
+            <div style="font-weight:700; font-size:1.05rem;">🎺 Team Entrance Anthems</div>
+            <div style="font-size:0.86rem; color:var(--text-muted);">
+                Play official walk-on hype music for pre-game team introductions.
+            </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            {% if game.team1.intro_track %}
+            <button type="button" class="btn btn-sm btn-secondary" onclick="playMatchIntro('{{ game.team1.intro_track.audio_file.url }}', {{ game.team1.intro_track.start_seconds }}, {{ game.team1.intro_track.duration_seconds }}, this)">
+                ▶️ {{ game.team1.name }} Anthem ({{ game.team1.intro_track.duration_seconds|floatformat:1 }}s)
+            </button>
+            {% endif %}
+            {% if game.team2.intro_track %}
+            <button type="button" class="btn btn-sm btn-secondary" onclick="playMatchIntro('{{ game.team2.intro_track.audio_file.url }}', {{ game.team2.intro_track.start_seconds }}, {{ game.team2.intro_track.duration_seconds }}, this)">
+                ▶️ {{ game.team2.name }} Anthem ({{ game.team2.intro_track.duration_seconds|floatformat:1 }}s)
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if is_rostered %}
 <!-- 1-Tap Player Attendance RSVP Widget -->
 <div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border:1px solid rgba(37,99,235,0.25); padding:1rem 1.25rem;">
