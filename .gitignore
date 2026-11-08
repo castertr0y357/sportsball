@@ -12,6 +12,8 @@ db.sqlite3
 db.sqlite3-journal
 staticfiles/
 media/
+backups/
+test_backups/
 .env
 *.log
 .DS_Store

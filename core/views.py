@@ -2,6 +2,7 @@ from datetime import date
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q
@@ -415,3 +416,39 @@ def join_church_by_invite(request, invite_code):
         f"Welcome, {request.user.first_name}! You are now appointed as Church Commissioner for {church.name}."
     )
     return redirect('church_detail', church_id=church.id)
+
+
+def announcement_detail(request, pk):
+    announcement = get_object_or_404(
+        Announcement.objects.select_related('league', 'season', 'author'),
+        pk=pk
+    )
+    can_manage = request.user.is_authenticated and (
+        request.user.is_overall_commissioner or
+        request.user.is_league_admin or
+        request.user == announcement.author
+    )
+    return render(request, 'core/announcement_detail.html', {
+        'announcement': announcement,
+        'can_manage': can_manage,
+    })
+
+
+@login_required
+@require_POST
+def toggle_announcement_banner(request, pk):
+    announcement = get_object_or_404(Announcement, pk=pk)
+    if not (request.user.is_overall_commissioner or request.user.is_league_admin):
+        messages.error(request, "Only league commissioners can toggle alert banners.")
+        return redirect('announcement_detail', pk=pk)
+
+    if not announcement.is_banner:
+        announcement.is_banner = True
+        announcement.banner_active = True
+    else:
+        announcement.banner_active = not announcement.banner_active
+    announcement.save(update_fields=['is_banner', 'banner_active'])
+
+    status_str = "activated as top alert banner" if announcement.banner_active else "deactivated from alert banner"
+    messages.success(request, f"Announcement {status_str}.")
+    return redirect('announcement_detail', pk=pk)

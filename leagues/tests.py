@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from core.models import Church, Announcement
 from users.models import CustomUser
-from leagues.models import League, Season, Team, SeasonRegistration, Game
+from leagues.models import League, Season, Team, SeasonRegistration, Game, LeagueVenue
 from stats.models import PlayerGameStat
 
 
@@ -1995,3 +1995,77 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         self.assertEqual(rainout_game.status, 'scheduled')
         self.assertEqual(rainout_game.date.strftime('%Y-%m-%d'), makeup_date)
         self.assertIn("Rescheduled makeup", rainout_game.notes)
+
+
+    def test_master_venues_pool(self):
+        self.client.login(username="admin_user", password="password123")
+        # Add venue to pool
+        resp = self.client.post(reverse('add_league_venue', args=[self.league.id]), {
+            'name': 'Heritage Diamond #3',
+            'address': '100 Main St',
+            'notes': 'Dugout gate code 1234'
+        })
+        self.assertEqual(resp.status_code, 302)
+        venue = LeagueVenue.objects.get(league=self.league, name='Heritage Diamond #3')
+        self.assertTrue(venue.is_active)
+
+        # Toggle active
+        resp = self.client.post(reverse('toggle_league_venue', args=[self.league.id, venue.id]))
+        self.assertEqual(resp.status_code, 302)
+        venue.refresh_from_db()
+        self.assertFalse(venue.is_active)
+
+        # Delete venue
+        resp = self.client.post(reverse('delete_league_venue', args=[self.league.id, venue.id]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(LeagueVenue.objects.filter(id=venue.id).exists())
+
+    def test_master_officials_pool(self):
+        ref_user = CustomUser.objects.create_user(username='ref_master_test', password='password123', role='referee')
+        self.client.login(username="admin_user", password="password123")
+        # Add official to master pool
+        resp = self.client.post(reverse('add_league_official', args=[self.league.id]), {
+            'user_id': ref_user.id
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(ref_user, self.league.master_officials_pool.all())
+
+        # When creating a new season, verify auto-inheritance
+        resp = self.client.post(reverse('create_season', args=[self.league.id]), {
+            'name': 'Spring 2027 Inherited Officials',
+            'start_date': '2027-04-01',
+            'end_date': '2027-06-30',
+            'registration_fee': 50.00,
+            'max_roster_size': 20,
+            'registration_open': True,
+            'current': True
+        })
+        self.assertEqual(resp.status_code, 302)
+        new_season = Season.objects.get(league=self.league, name='Spring 2027 Inherited Officials')
+        self.assertIn(ref_user, new_season.officials_pool.all())
+
+        # Remove official from master pool
+        resp = self.client.post(reverse('remove_league_official', args=[self.league.id, ref_user.id]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn(ref_user, self.league.master_officials_pool.all())
+
+    def test_import_teams_across_seasons(self):
+        self.client.login(username="admin_user", password="password123")
+        target_season = Season.objects.create(
+            league=self.league,
+            name="Fall 2027 Fellowship Season",
+            start_date=date.today() + timedelta(days=365),
+            end_date=date.today() + timedelta(days=425),
+        )
+
+        resp = self.client.post(reverse('import_season_teams', args=[target_season.id]), {
+            'confirm_import': '1',
+            'source_season_id': str(self.season.id),
+            'selected_teams': [self.team1.id, self.team2.id]
+        })
+        self.assertEqual(resp.status_code, 302)
+        
+        # Verify teams exist in target season
+        imported_team_names = list(target_season.teams.values_list('name', flat=True))
+        self.assertIn(self.team1.name, imported_team_names)
+        self.assertIn(self.team2.name, imported_team_names)

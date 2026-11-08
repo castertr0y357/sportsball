@@ -51,6 +51,12 @@ class League(models.Model):
         on_delete=models.CASCADE,
         related_name='leagues'
     )
+    master_officials_pool = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='master_officiating_leagues',
+        help_text="Master pool of certified officials eligible for assignment across seasons in this league"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -863,3 +869,19 @@ class GameOfficialAssignment(models.Model):
 
     def __str__(self):
         return f"{self.official.display_name} - {self.get_role_display()} ({self.game})"
+
+
+class LeagueVenue(models.Model):
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='venues')
+    name = models.CharField(max_length=150, help_text="Venue / Field / Court Name (e.g. Field #1, North Gym)")
+    address = models.CharField(max_length=255, blank=True, help_text="Street address or location directions")
+    notes = models.TextField(blank=True, help_text="Parking notes, gate codes, lighting switches")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = [('league', 'name')]
+
+    def __str__(self):
+        return f"{self.name} ({self.league.name})"

@@ -20,7 +20,7 @@ class AnnouncementForm(forms.ModelForm):
         model = Announcement
         fields = [
             'title', 'category', 'content', 'scripture_reference',
-            'league', 'season', 'is_urgent',
+            'league', 'season', 'is_urgent', 'is_banner', 'banner_active',
         ]
         widgets = {
             'content': forms.Textarea(attrs={'rows': 4}),
@@ -34,3 +34,11 @@ class AnnouncementForm(forms.ModelForm):
                 self.fields['is_urgent'].widget = forms.HiddenInput()
                 self.fields['is_urgent'].initial = False
                 self.fields['is_urgent'].required = False
+            if 'is_banner' in self.fields:
+                self.fields['is_banner'].widget = forms.HiddenInput()
+                self.fields['is_banner'].initial = False
+                self.fields['is_banner'].required = False
+            if 'banner_active' in self.fields:
+                self.fields['banner_active'].widget = forms.HiddenInput()
+                self.fields['banner_active'].initial = False
+                self.fields['banner_active'].required = False

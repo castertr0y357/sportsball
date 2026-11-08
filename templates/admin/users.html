@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% block title %}User Account Controls &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">&#128101; User Account Controls</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Manage membership accounts, trigger administrative password resets, and toggle account activation.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{% url 'system_admin_dashboard' %}" class="btn btn-secondary">&larr; System Dashboard</a>
+    </div>
+</div>
+
+<!-- Search & Filters Card -->
+<div class="admin-card">
+    <form method="get" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+        <div style="flex: 2; min-width: 220px;">
+            <label for="q" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Search Accounts</label>
+            <input type="text" name="q" id="q" class="form-control" value="{{ query }}" placeholder="Search by name, username, or email..." style="width: 100%;">
+        </div>
+        <div style="flex: 1; min-width: 160px;">
+            <label for="role" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Filter by Role</label>
+            <select name="role" id="role" class="form-control" style="width: 100%;">
+                <option value="">All Roles</option>
+                {% for r_val, r_lbl in roles %}
+                    <option value="{{ r_val }}" {% if role_filter == r_val %}selected{% endif %}>{{ r_lbl }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+            <label for="status" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Status</label>
+            <select name="status" id="status" class="form-control" style="width: 100%;">
+                <option value="">All Statuses</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Deactivated</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary" style="font-weight: 700;">Filter</button>
+            {% if query or role_filter or status_filter %}
+                <a href="{% url 'system_admin_users' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Users Table Card -->
+<div class="admin-card">
+    {% if page_obj %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>Home Church</th>
+                        <th>Status</th>
+                        <th>Joined</th>
+                        <th>Last Login</th>
+                        <th style="text-align: right;">Administrative Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in page_obj %}
+                    <tr>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+                                    {{ u.username|slice:":2"|upper }}
+                                </div>
+                                <div>
+                                    <div style="font-weight: 700; color: var(--text);">{{ u.display_name }}</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">@{{ u.username }} {% if u.email %}&bull; {{ u.email }}{% endif %}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem;">
+                                {{ u.get_role_display }}
+                            </span>
+                        </td>
+                        <td style="font-size: 0.85rem;">{{ u.church.name|default:"—" }}</td>
+                        <td>
+                            {% if u.is_active %}
+                                <span style="color: #16a34a; font-weight: 700; font-size: 0.85rem;">&#10003; Active</span>
+                            {% else %}
+                                <span style="color: #dc2626; font-weight: 700; font-size: 0.85rem;">&#10007; Deactivated</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 0.85rem; color: var(--text-muted);">{{ u.date_joined|date:"M j, Y" }}</td>
+                        <td style="font-size: 0.85rem; color: var(--text-muted);">{{ u.last_login|date:"M j, Y H:i"|default:"Never" }}</td>
+                        <td style="text-align: right; white-space: nowrap;">
+                            <!-- Reset Password -->
+                            <form method="post" action="{% url 'admin_reset_user_password' u.id %}" style="display: inline;" onsubmit="return confirm('Generate a temporary password for {{ u.display_name }}?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-secondary btn-sm" title="Reset user password">&#128273; Reset Pass</button>
+                            </form>
+
+                            <!-- Toggle Active Status -->
+                            {% if u.id != request.user.id %}
+                                <form method="post" action="{% url 'admin_toggle_user_active' u.id %}" style="display: inline;" onsubmit="return confirm('Toggle active status for {{ u.display_name }}?');">
+                                    {% csrf_token %}
+                                    {% if u.is_active %}
+                                        <button type="submit" class="btn btn-danger btn-sm" title="Deactivate user account">&#9888;&#65039; Deactivate</button>
+                                    {% else %}
+                                        <button type="submit" class="btn btn-success btn-sm" title="Activate user account">&#9989; Activate</button>
+                                    {% endif %}
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}&q={{ query }}&role={{ role_filter }}&status={{ status_filter }}" class="btn btn-secondary btn-sm">&larr; Previous</a>
+                {% endif %}
+                <span style="align-self: center; font-size: 0.9rem; color: var(--text-muted);">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}&q={{ query }}&role={{ role_filter }}&status={{ status_filter }}" class="btn btn-secondary btn-sm">Next &rarr;</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    {% else %}
+        <p style="color: var(--text-muted); font-size: 0.95rem;">No user accounts found matching query.</p>
+    {% endif %}
+</div>
+{% endblock %}

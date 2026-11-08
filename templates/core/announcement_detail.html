@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ announcement.title }} &bull; Announcements &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div style="margin-bottom: 1.5rem;">
+        <a href="{% url 'announcement_list' %}" class="btn btn-secondary btn-sm">&larr; All Announcements</a>
+    </div>
+
+    <div class="card" style="padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+            <div>
+                <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem; text-transform: uppercase;">
+                    {{ announcement.get_category_display }}
+                </span>
+                {% if announcement.is_urgent %}
+                    <span class="badge" style="background: #dc2626; color: #fff; font-size: 0.8rem; font-weight: 700; margin-left: 0.5rem;">
+                        &#128680; Urgent Alert
+                    </span>
+                {% endif %}
+                {% if announcement.is_banner and announcement.banner_active %}
+                    <span class="badge" style="background: #d97706; color: #fff; font-size: 0.8rem; font-weight: 700; margin-left: 0.5rem;">
+                        &#128227; Active Top Banner
+                    </span>
+                {% endif %}
+            </div>
+
+            {% if can_manage %}
+                <form method="post" action="{% url 'toggle_announcement_banner' announcement.pk %}">
+                    {% csrf_token %}
+                    {% if announcement.is_banner and announcement.banner_active %}
+                        <button type="submit" class="btn btn-secondary btn-sm">&#128308; Deactivate Banner</button>
+                    {% else %}
+                        <button type="submit" class="btn btn-primary btn-sm">&#128227; Promote to Top Banner</button>
+                    {% endif %}
+                </form>
+            {% endif %}
+        </div>
+
+        <h1 style="font-size: 1.75rem; font-weight: 800; margin: 0 0 0.75rem 0; color: var(--text);">{{ announcement.title }}</h1>
+        <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+            <span>Posted by <strong>{{ announcement.author.display_name }}</strong></span>
+            <span>&bull;</span>
+            <span>{{ announcement.created_at|date:"F j, Y, g:i a" }}</span>
+            {% if announcement.league %}
+                <span>&bull;</span>
+                <span>League: <strong>{{ announcement.league.name }}</strong></span>
+            {% endif %}
+            {% if announcement.season %}
+                <span>&bull;</span>
+                <span>Season: <strong>{{ announcement.season.name }}</strong></span>
+            {% endif %}
+        </div>
+
+        <div style="font-size: 1.05rem; line-height: 1.7; color: var(--text); white-space: pre-wrap; margin-bottom: 2rem;">{{ announcement.content }}</div>
+
+        {% if announcement.scripture_reference %}
+            <div style="background: var(--surface-alt); border-left: 4px solid var(--primary); padding: 1rem 1.25rem; border-radius: 4px; font-style: italic; color: var(--text-muted);">
+                &#128214; "{{ announcement.scripture_reference }}"
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

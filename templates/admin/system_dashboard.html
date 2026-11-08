@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+
+{% block title %}System Diagnostics &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">&#128736;&#65039; Platform Telemetry &amp; Diagnostics</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">Real-time infrastructure health, storage utilization, and system toggles.</p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{% url 'system_admin_backups' %}" class="btn btn-secondary">&#128190; GFS Backups Console</a>
+        <a href="{% url 'system_admin_users' %}" class="btn btn-primary">&#128101; Manage Accounts</a>
+    </div>
+</div>
+
+<!-- Telemetry Cards -->
+<div class="admin-grid-stats">
+    <div class="stat-card">
+        <div class="stat-card-title">Database Storage</div>
+        <div class="stat-card-val">{{ db_size_mb }} <span style="font-size: 1rem; font-weight: 500;">MB</span></div>
+        <div class="stat-card-sub">Active relational tables</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-title">Media Storage</div>
+        <div class="stat-card-val">{{ media_size_mb }} <span style="font-size: 1rem; font-weight: 500;">MB</span></div>
+        <div class="stat-card-sub">Walk-up songs &amp; logos</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-title">Local Backups</div>
+        <div class="stat-card-val">{{ backup_size_mb }} <span style="font-size: 1rem; font-weight: 500;">MB</span></div>
+        <div class="stat-card-sub">GFS archives on volume</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-title">Active Sessions</div>
+        <div class="stat-card-val" style="color: var(--primary);">{{ active_sessions_count }}</div>
+        <div class="stat-card-sub">Live authenticated sessions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-title">Total Accounts</div>
+        <div class="stat-card-val">{{ total_users }}</div>
+        <div class="stat-card-sub"><span style="color: #16a34a; font-weight: 600;">{{ active_users }} active</span> &bull; {{ inactive_users }} inactive</div>
+    </div>
+</div>
+
+<div class="form-grid-2">
+    <!-- Maintenance Mode Control -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#128679; Maintenance Mode</h2>
+            <span class="badge" style="{% if setting.maintenance_mode %}background: #dc2626; color: #fff;{% else %}background: #16a34a; color: #fff;{% endif %} padding: 0.3rem 0.75rem; font-weight: 700; border-radius: 9999px;">
+                {% if setting.maintenance_mode %}ACTIVE &bull; 503 LOCK{% else %}OFFLINE &bull; LIVE{% endif %}
+            </span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+            When active, non-staff visitors will see a 503 Service Unavailable page. Administrative login remains available.
+        </p>
+        <form method="post" action="{% url 'admin_toggle_maintenance_mode' %}">
+            {% csrf_token %}
+            {% if setting.maintenance_mode %}
+                <button type="submit" class="btn btn-success" style="width: 100%; font-weight: 700;">
+                    &#9989; Disable Maintenance Mode (Bring Site Live)
+                </button>
+            {% else %}
+                <button type="submit" class="btn btn-danger" style="width: 100%; font-weight: 700;" onclick="return confirm('Enable Platform Maintenance Mode? Non-admin users will be redirected to the 503 maintenance screen.');">
+                    &#128679; Enable Maintenance Mode
+                </button>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Global Emergency Alert Banner -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#128680; Emergency Alert Banner</h2>
+            <span class="badge" style="{% if setting.banner_active %}background: #dc2626; color: #fff;{% else %}background: #64748b; color: #fff;{% endif %} padding: 0.3rem 0.75rem; font-weight: 700; border-radius: 9999px;">
+                {% if setting.banner_active %}ACTIVE{% else %}DISABLED{% endif %}
+            </span>
+        </div>
+        <form method="post" action="{% url 'admin_update_emergency_banner' %}">
+            {% csrf_token %}
+            <div style="margin-bottom: 0.85rem;">
+                <label for="banner_message" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Banner Message / Title</label>
+                <input type="text" id="banner_message" name="banner_message" class="form-control" value="{{ setting.banner_message }}" placeholder="e.g. Severe Weather: All Tuesday night softball games cancelled" style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label for="banner_link" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Optional Link URL</label>
+                <input type="text" id="banner_link" name="banner_link" class="form-control" value="{{ setting.banner_link }}" placeholder="e.g. /announcements/12/ or https://..." style="width: 100%;">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.95rem; font-weight: 600;">
+                    <input type="checkbox" name="banner_active" {% if setting.banner_active %}checked{% endif %}>
+                    Display Banner Across All Pages
+                </label>
+                <button type="submit" class="btn btn-primary btn-sm">Save Banner</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Recent Backups & Role Distribution -->
+<div class="form-grid-2">
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#128190; Recent GFS Backups</h2>
+            <a href="{% url 'system_admin_backups' %}" class="btn btn-secondary btn-sm">View All &rarr;</a>
+        </div>
+        {% if recent_backups %}
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Snapshot</th>
+                            <th>Tier</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in recent_backups %}
+                        <tr>
+                            <td style="font-family: monospace; font-size: 0.85rem;">{{ b.filename|truncatechars:24 }}</td>
+                            <td>
+                                <span class="badge-tier-{{ b.tier|lower }}">{{ b.tier }}</span>
+                            </td>
+                            <td>
+                                {% if b.status == 'SUCCESS' %}
+                                    <span style="color: #16a34a; font-weight: 700;">&#10003; Ok</span>
+                                {% else %}
+                                    <span style="color: #dc2626; font-weight: 700;">&#10007; Fail</span>
+                                {% endif %}
+                            </td>
+                            <td style="color: var(--text-muted); font-size: 0.8rem;">{{ b.created_at|date:"M j, H:i" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="color: var(--text-muted); font-size: 0.95rem;">No backup records logged yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#128101; Account Roles Breakdown</h2>
+            <a href="{% url 'system_admin_users' %}" class="btn btn-secondary btn-sm">Manage Users &rarr;</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table" style="font-size: 0.9rem;">
+                <thead>
+                    <tr>
+                        <th>Role Type</th>
+                        <th style="text-align: right;">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in role_breakdown %}
+                    <tr>
+                        <td style="text-transform: capitalize; font-weight: 600;">{{ r.role|default:"Unassigned" }}</td>
+                        <td style="text-align: right; font-weight: 700;">{{ r.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Import Teams &bull; {{ season.name }} &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">&#128260; Re-use Teams Across Seasons</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Carry forward church franchises, team colors, captains, and lineup templates from a prior season into <strong>{{ season.name }}</strong>.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{% url 'season_detail' season.id %}" class="btn btn-secondary">&larr; Back to {{ season.name }}</a>
+    </div>
+</div>
+
+<div class="admin-card">
+    <form method="get" style="margin-bottom: 1.5rem;">
+        <label for="source_season_id" style="display: block; font-weight: 700; margin-bottom: 0.5rem;">Select Source Season from {{ league.name }}</label>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <select name="source_season_id" id="source_season_id" class="form-control" style="flex: 1; min-width: 240px;" onchange="this.form.submit()">
+                <option value="">Choose past season...</option>
+                {% for os in other_seasons %}
+                    <option value="{{ os.id }}" {% if source_season.id == os.id %}selected{% endif %}>
+                        {{ os.name }} ({{ os.start_date|date:"Y" }}) - {{ os.teams.count }} team{{ os.teams.count|pluralize }}
+                    </option>
+                {% endfor %}
+            </select>
+            <noscript><button type="submit" class="btn btn-secondary">Select</button></noscript>
+        </div>
+    </form>
+
+    {% if source_season %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="confirm_import" value="1">
+            <input type="hidden" name="source_season_id" value="{{ source_season.id }}">
+
+            <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem;">
+                Teams from {{ source_season.name }}
+            </h3>
+
+            {% if source_teams %}
+                <div style="margin-bottom: 1rem;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="selectAll(true)">Select All</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="selectAll(false)">Deselect All</button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="masterCheckbox" onclick="selectAll(this.checked)"></th>
+                                <th>Team Name</th>
+                                <th>Home Church</th>
+                                <th>Team Captain</th>
+                                <th>Jersey Color</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for team in source_teams %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="selected_teams" value="{{ team.id }}" class="team-checkbox" checked>
+                                </td>
+                                <td style="font-weight: 700;">{{ team.name }}</td>
+                                <td>{{ team.church.name|default:"Independent / Fellowship" }}</td>
+                                <td>{{ team.captain.display_name }}</td>
+                                <td>
+                                    <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border);">
+                                        {{ team.team_color }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <button type="submit" class="btn btn-primary" style="font-weight: 700;">
+                        &#10010; Import Selected Teams into {{ season.name }}
+                    </button>
+                </div>
+            {% else %}
+                <p style="color: var(--text-muted);">No teams registered in {{ source_season.name }}.</p>
+            {% endif %}
+        </form>
+    {% endif %}
+</div>
+
+<script>
+function selectAll(val) {
+    document.querySelectorAll('.team-checkbox').forEach(cb => cb.checked = val);
+    const m = document.getElementById('masterCheckbox');
+    if (m) m.checked = val;
+}
+</script>
+{% endblock %}

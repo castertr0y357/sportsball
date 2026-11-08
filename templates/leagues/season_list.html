@@ -7,9 +7,10 @@
         <h1>{{ league.name }} <span class="badge badge-primary">{{ league.get_sport_display }}</span></h1>
         <p style="margin:0.25rem 0 0; color:var(--text-muted);">{{ league.description }}</p>
     </div>
-    <div style="display:flex; gap:0.5rem;">
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
         <a href="{% url 'league_list' %}" class="btn btn-secondary">&larr; All Leagues</a>
         {% if user.is_league_admin %}
+            <a href="{% url 'manage_league_pools' league.id %}" class="btn btn-secondary">&#127967;&#65039; Master Pools</a>
             <a href="{% url 'create_season' league.id %}" class="btn">+ Create Season</a>
         {% endif %}
     </div>

@@ -55,4 +55,12 @@ urlpatterns = [
     path('games/<int:game_id>/forfeit/', views.record_game_forfeit, name='record_game_forfeit'),
     path('seasons/<int:season_id>/reschedule-rainouts/', views.reschedule_rainouts, name='reschedule_rainouts'),
     path('officials/assignments/<int:assignment_id>/toggle-payment/', views.toggle_official_payment, name='toggle_official_payment'),
+    # League Master Pools & Multi-Season Franchise Inheritance
+    path('<int:league_id>/pools/', views.manage_league_pools, name='manage_league_pools'),
+    path('<int:league_id>/pools/venues/add/', views.add_league_venue, name='add_league_venue'),
+    path('<int:league_id>/pools/venues/<int:venue_id>/toggle/', views.toggle_league_venue, name='toggle_league_venue'),
+    path('<int:league_id>/pools/venues/<int:venue_id>/delete/', views.delete_league_venue, name='delete_league_venue'),
+    path('<int:league_id>/pools/officials/add/', views.add_league_official, name='add_league_official'),
+    path('<int:league_id>/pools/officials/<int:user_id>/remove/', views.remove_league_official, name='remove_league_official'),
+    path('seasons/<int:season_id>/teams/import/', views.import_season_teams, name='import_season_teams'),
 ]

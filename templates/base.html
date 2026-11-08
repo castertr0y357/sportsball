@@ -80,6 +80,11 @@
                             <a href="{% url 'test_users_portal' %}" class="dropdown-item" role="menuitem">
                                 <span class="dropdown-icon">&#9881;</span> Testing Sandbox (Switch Role)
                             </a>
+                            {% if user.is_superuser %}
+                            <a href="{% url 'system_admin_dashboard' %}" class="dropdown-item" role="menuitem" style="color:var(--primary); font-weight:600;">
+                                <span class="dropdown-icon">&#128736;&#65039;</span> System Control Console
+                            </a>
+                            {% endif %}
                         </div>
                     {% else %}
                         <div class="dropdown-user-header">
@@ -212,6 +217,22 @@
                 </a>
                 {% endif %}
 
+                {% if user.is_superuser %}
+                <div class="sidebar-section-label">System Control</div>
+                <a href="{% url 'system_admin_dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'system_admin_dashboard' %}active{% endif %}">
+                    <span class="sidebar-icon">&#128736;&#65039;</span>
+                    <span class="sidebar-text">Platform Diagnostics</span>
+                </a>
+                <a href="{% url 'system_admin_backups' %}" class="sidebar-link {% if request.resolver_match.url_name == 'system_admin_backups' %}active{% endif %}">
+                    <span class="sidebar-icon">&#128190;</span>
+                    <span class="sidebar-text">GFS Backups &amp; Restore</span>
+                </a>
+                <a href="{% url 'system_admin_users' %}" class="sidebar-link {% if request.resolver_match.url_name == 'system_admin_users' %}active{% endif %}">
+                    <span class="sidebar-icon">&#128101;</span>
+                    <span class="sidebar-text">User Account Controls</span>
+                </a>
+                {% endif %}
+
                 <div class="sidebar-section-label">Volunteer &amp; Testing</div>
                 <a href="{% url 'practice_sandbox' %}" class="sidebar-link {% if request.resolver_match.url_name == 'practice_sandbox' %}active{% endif %}">
                     <span class="sidebar-icon">&#127918;</span>
@@ -238,6 +259,17 @@
 
         <!-- Main Content Area -->
         <div class="app-content-wrapper">
+            {% if active_banner %}
+            <div class="emergency-alert-banner" role="alert">
+                <div class="emergency-banner-content">
+                    <span class="emergency-banner-icon">&#128680;</span>
+                    <span class="emergency-banner-title">{{ active_banner.title }}</span>
+                    {% if active_banner.link %}
+                        <a href="{{ active_banner.link }}" class="emergency-banner-link">View Details &rarr;</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
             <main class="container">
                 {% if messages %}
                     {% for message in messages %}

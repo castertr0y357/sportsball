@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.db.models import F, Max, Q
-from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP, GameOfficialAssignment
+from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP, GameOfficialAssignment, LeagueVenue
 from core.services.notifications import send_discord_notification, send_twilio_sms
 from .forms import (
     LeagueForm, SeasonForm, TeamForm, SeasonRegistrationForm,
@@ -60,6 +60,9 @@ def create_season(request, league_id):
             season = form.save(commit=False)
             season.league = league
             season.save()
+            # Inherit officials from league master pool
+            if league.master_officials_pool.exists():
+                season.officials_pool.add(*league.master_officials_pool.all())
             messages.success(request, f"Season '{season.name}' created successfully.")
             return redirect('season_list', league_id=league_id)
     else:
@@ -2303,4 +2306,169 @@ def reschedule_rainouts(request, season_id):
     return render(request, 'leagues/reschedule_rainouts.html', {
         'season': season,
         'rainout_games': rainout_games,
+    })
+
+
+
+@login_required
+def manage_league_pools(request, league_id):
+    """Console for League and Overall Commissioners to manage persistent venue and officials pools."""
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied: Only league commissioners can manage master pools.")
+        return redirect('season_list', league_id=league_id)
+
+    venues = league.venues.all().order_by('name')
+    officials = league.master_officials_pool.all().order_by('first_name', 'last_name')
+    
+    available_users = CustomUser.objects.filter(is_active=True).exclude(
+        id__in=officials.values_list('id', flat=True)
+    ).order_by('first_name', 'last_name')[:40]
+
+    return render(request, 'leagues/manage_pools.html', {
+        'league': league,
+        'venues': venues,
+        'officials': officials,
+        'available_users': available_users,
+    })
+
+
+@login_required
+@require_POST
+def add_league_venue(request, league_id):
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    name = request.POST.get('name', '').strip()
+    address = request.POST.get('address', '').strip()
+    notes = request.POST.get('notes', '').strip()
+
+    if not name:
+        messages.error(request, "Venue / Field name is required.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    venue, created = LeagueVenue.objects.get_or_create(
+        league=league,
+        name=name,
+        defaults={'address': address, 'notes': notes, 'is_active': True}
+    )
+    if created:
+        messages.success(request, f"Venue '{venue.name}' added to master pool.")
+    else:
+        messages.info(request, f"Venue '{venue.name}' already exists in this league.")
+    return redirect('manage_league_pools', league_id=league_id)
+
+
+@login_required
+@require_POST
+def toggle_league_venue(request, league_id, venue_id):
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    venue = get_object_or_404(LeagueVenue, id=venue_id, league=league)
+    venue.is_active = not venue.is_active
+    venue.save(update_fields=['is_active'])
+    status_str = "active" if venue.is_active else "inactive / offline"
+    messages.success(request, f"Venue '{venue.name}' marked {status_str}.")
+    return redirect('manage_league_pools', league_id=league_id)
+
+
+@login_required
+@require_POST
+def delete_league_venue(request, league_id, venue_id):
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    venue = get_object_or_404(LeagueVenue, id=venue_id, league=league)
+    venue_name = venue.name
+    venue.delete()
+    messages.success(request, f"Venue '{venue_name}' removed from league pool.")
+    return redirect('manage_league_pools', league_id=league_id)
+
+
+@login_required
+@require_POST
+def add_league_official(request, league_id):
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    user_id = request.POST.get('user_id')
+    user = get_object_or_404(CustomUser, id=user_id)
+    league.master_officials_pool.add(user)
+    messages.success(request, f"{user.display_name} added to {league.name} Master Officials Pool.")
+    return redirect('manage_league_pools', league_id=league_id)
+
+
+@login_required
+@require_POST
+def remove_league_official(request, league_id, user_id):
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league_id)
+
+    user = get_object_or_404(CustomUser, id=user_id)
+    league.master_officials_pool.remove(user)
+    messages.success(request, f"{user.display_name} removed from {league.name} Master Officials Pool.")
+    return redirect('manage_league_pools', league_id=league_id)
+
+
+@login_required
+def import_season_teams(request, season_id):
+    """Allows League Commissioner to 1-tap re-use / import teams from an earlier season."""
+    season = get_object_or_404(Season.objects.select_related('league'), id=season_id)
+    league = season.league
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('season_detail', season_id=season_id)
+
+    other_seasons = league.seasons.exclude(id=season.id).order_by('-start_date')
+    selected_source_id = request.GET.get('source_season_id') or request.POST.get('source_season_id')
+    source_season = None
+    source_teams = []
+
+    if selected_source_id:
+        source_season = get_object_or_404(Season, id=selected_source_id, league=league)
+        source_teams = source_season.teams.all().select_related('church', 'captain')
+
+    if request.method == 'POST' and 'confirm_import' in request.POST:
+        team_ids = request.POST.getlist('selected_teams')
+        if not team_ids:
+            messages.warning(request, "No teams selected for import.")
+            return redirect(f"{request.path}?source_season_id={selected_source_id}")
+
+        existing_names = set(season.teams.values_list('name', flat=True))
+        imported_count = 0
+        for st in source_season.teams.filter(id__in=team_ids):
+            if st.name not in existing_names:
+                Team.objects.create(
+                    name=st.name,
+                    league=league,
+                    season=season,
+                    church=st.church,
+                    captain=st.captain,
+                    team_color=st.team_color,
+                    dues_paid=False,
+                    default_lineup=st.default_lineup,
+                )
+                existing_names.add(st.name)
+                imported_count += 1
+
+        messages.success(request, f"Successfully imported {imported_count} team(s) into {season.name}.")
+        return redirect('season_detail', season_id=season_id)
+
+    return render(request, 'leagues/import_teams.html', {
+        'season': season,
+        'league': league,
+        'other_seasons': other_seasons,
+        'source_season': source_season,
+        'source_teams': source_teams,
     })

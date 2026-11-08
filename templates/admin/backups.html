@@ -1,0 +1,344 @@
+{% extends 'base.html' %}
+
+{% block title %}GFS Backups &amp; Restore &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">&#128190; GFS Automated Backups &amp; Restore</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Grandfather-Father-Son rotation engine targeting Local disk, S3, CIFS/SMB, or Userspace NFS.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <form method="post" action="{% url 'backup_manual_trigger' %}" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary" style="font-weight: 700;">
+                &#9889; Create Manual Snapshot Now
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Configuration Form Card -->
+<div class="admin-card">
+    <div class="admin-card-header">
+        <h2 class="admin-card-title">&#9881; GFS Schedule &amp; Storage Target</h2>
+        <span class="badge" style="{% if config.is_enabled %}background: #16a34a; color: #fff;{% else %}background: #64748b; color: #fff;{% endif %} padding: 0.3rem 0.75rem; font-weight: 700; border-radius: 9999px;">
+            {% if config.is_enabled %}SCHEDULE ACTIVE{% else %}SCHEDULE PAUSED{% endif %}
+        </span>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="update_config" value="1">
+
+        <div style="margin-bottom: 1.25rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; cursor: pointer;">
+                <input type="checkbox" name="is_enabled" {% if config.is_enabled %}checked{% endif %}>
+                Enable Scheduled Automated GFS Backups
+            </label>
+        </div>
+
+        <div class="form-grid-2" style="margin-bottom: 1.25rem;">
+            <div>
+                <label for="storage_type" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Storage Target Driver</label>
+                <select name="storage_type" id="storage_type" class="form-control" style="width: 100%;" onchange="toggleStorageFields()">
+                    {% for st_val, st_lbl in config.STORAGE_TYPE_CHOICES %}
+                        <option value="{{ st_val }}" {% if config.storage_type == st_val %}selected{% endif %}>{{ st_lbl }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="backup_time" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Scheduled Execution Time (UTC)</label>
+                <input type="text" name="backup_time" id="backup_time" class="form-control" value="{{ config.backup_time }}" placeholder="02:00" style="width: 100%;">
+            </div>
+        </div>
+
+        <!-- Driver Specific Sections -->
+        <div id="local_config_block" class="storage-config-card">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95rem;">&#128193; Local Volume Settings</h4>
+            <label for="local_path" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Directory Path</label>
+            <input type="text" name="local_path" id="local_path" class="form-control" value="{{ config.local_path }}" placeholder="backups" style="width: 100%;">
+        </div>
+
+        <div id="s3_config_block" class="storage-config-card" style="display: none;">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95rem;">&#9729;&#65039; Amazon S3 / S3-Compatible Object Storage</h4>
+            <div class="form-grid-2">
+                <div>
+                    <label for="s3_bucket" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Bucket Name</label>
+                    <input type="text" name="s3_bucket" id="s3_bucket" class="form-control" value="{{ config.s3_bucket }}" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="s3_region" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Region</label>
+                    <input type="text" name="s3_region" id="s3_region" class="form-control" value="{{ config.s3_region }}" placeholder="us-east-1" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="s3_access_key" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Access Key ID</label>
+                    <input type="text" name="s3_access_key" id="s3_access_key" class="form-control" value="{{ config.s3_access_key }}" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="s3_secret_key" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Secret Access Key</label>
+                    <input type="password" name="s3_secret_key" id="s3_secret_key" class="form-control" value="{{ config.s3_secret_key }}" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="s3_endpoint_url" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Custom Endpoint URL (Optional for MinIO/R2)</label>
+                    <input type="text" name="s3_endpoint_url" id="s3_endpoint_url" class="form-control" value="{{ config.s3_endpoint_url|default:'' }}" placeholder="https://..." style="width: 100%;">
+                </div>
+                <div>
+                    <label for="s3_prefix" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Key Prefix</label>
+                    <input type="text" name="s3_prefix" id="s3_prefix" class="form-control" value="{{ config.s3_prefix }}" placeholder="sportsball/" style="width: 100%;">
+                </div>
+            </div>
+        </div>
+
+        <div id="cifs_config_block" class="storage-config-card" style="display: none;">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95rem;">&#128187; CIFS / SMB Windows Network Share</h4>
+            <div class="form-grid-2">
+                <div>
+                    <label for="cifs_server" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Server Host / IP</label>
+                    <input type="text" name="cifs_server" id="cifs_server" class="form-control" value="{{ config.cifs_server }}" placeholder="192.168.1.50" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="cifs_share" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Share Name</label>
+                    <input type="text" name="cifs_share" id="cifs_share" class="form-control" value="{{ config.cifs_share }}" placeholder="backups" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="cifs_subpath" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Subdirectory Path</label>
+                    <input type="text" name="cifs_subpath" id="cifs_subpath" class="form-control" value="{{ config.cifs_subpath }}" placeholder="sportsball" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="cifs_username" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Username</label>
+                    <input type="text" name="cifs_username" id="cifs_username" class="form-control" value="{{ config.cifs_username }}" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="cifs_password" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Password</label>
+                    <input type="password" name="cifs_password" id="cifs_password" class="form-control" value="{{ config.cifs_password }}" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="cifs_domain" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Domain (Optional)</label>
+                    <input type="text" name="cifs_domain" id="cifs_domain" class="form-control" value="{{ config.cifs_domain }}" style="width: 100%;">
+                </div>
+            </div>
+        </div>
+
+        <div id="nfs_config_block" class="storage-config-card" style="display: none;">
+            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95rem;">&#128039; Direct Userspace NFS Export</h4>
+            <div class="form-grid-2">
+                <div>
+                    <label for="nfs_server" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">NFS Server Host / IP</label>
+                    <input type="text" name="nfs_server" id="nfs_server" class="form-control" value="{{ config.nfs_server }}" placeholder="192.168.1.100" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="nfs_export" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Export Path</label>
+                    <input type="text" name="nfs_export" id="nfs_export" class="form-control" value="{{ config.nfs_export }}" placeholder="/volume1/backups" style="width: 100%;">
+                </div>
+                <div>
+                    <label for="nfs_subpath" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Subdirectory</label>
+                    <input type="text" name="nfs_subpath" id="nfs_subpath" class="form-control" value="{{ config.nfs_subpath }}" placeholder="sportsball" style="width: 100%;">
+                </div>
+            </div>
+        </div>
+
+        <!-- GFS Rotation Retention Quotas -->
+        <h3 style="font-size: 1.05rem; font-weight: 700; margin: 1.5rem 0 0.75rem 0;">&#128260; GFS Retention Policy</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div>
+                <label for="keep_daily" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Daily Backups to Keep</label>
+                <input type="number" name="keep_daily" id="keep_daily" class="form-control" value="{{ config.keep_daily }}" min="1" max="90" style="width: 100%;">
+            </div>
+            <div>
+                <label for="keep_weekly" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Weekly Backups to Keep</label>
+                <input type="number" name="keep_weekly" id="keep_weekly" class="form-control" value="{{ config.keep_weekly }}" min="0" max="52" style="width: 100%;">
+            </div>
+            <div>
+                <label for="keep_monthly" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Monthly Backups to Keep</label>
+                <input type="number" name="keep_monthly" id="keep_monthly" class="form-control" value="{{ config.keep_monthly }}" min="0" max="60" style="width: 100%;">
+            </div>
+            <div>
+                <label for="weekly_day" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Weekly Promotion Day</label>
+                <select name="weekly_day" id="weekly_day" class="form-control" style="width: 100%;">
+                    {% for d_val, d_lbl in config.WEEKDAY_CHOICES %}
+                        <option value="{{ d_val }}" {% if config.weekly_day == d_val %}selected{% endif %}>{{ d_lbl }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="monthly_day" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Monthly Promotion Day</label>
+                <input type="number" name="monthly_day" id="monthly_day" class="form-control" value="{{ config.monthly_day }}" min="1" max="28" style="width: 100%;">
+            </div>
+        </div>
+
+        <!-- Encryption & Alerting -->
+        <h3 style="font-size: 1.05rem; font-weight: 700; margin: 1.5rem 0 0.75rem 0;">&#128274; Encryption &amp; Failure Alerts</h3>
+        <div class="form-grid-2" style="margin-bottom: 1.25rem;">
+            <div>
+                <label for="encryption_passphrase" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">AES-256-GCM Passphrase (Optional)</label>
+                <input type="password" name="encryption_passphrase" id="encryption_passphrase" class="form-control" value="{{ config.encryption_passphrase }}" placeholder="Leave blank for unencrypted compression" style="width: 100%;">
+            </div>
+            <div>
+                <label for="webhook_url" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Failure Webhook URL (Discord/Gotify/Slack)</label>
+                <input type="url" name="webhook_url" id="webhook_url" class="form-control" value="{{ config.webhook_url }}" placeholder="https://discord.com/api/webhooks/..." style="width: 100%;">
+            </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" name="preserve_config_on_restore" {% if config.preserve_config_on_restore %}checked{% endif %}>
+                Preserve active backup schedule &amp; storage credentials when restoring older snapshots
+            </label>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <button type="submit" class="btn btn-primary" style="font-weight: 700;">Save Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="testTargetConnection()">&#128269; Test Storage Target</button>
+            <span id="test_conn_result" style="font-weight: 600; font-size: 0.9rem;"></span>
+        </div>
+    </form>
+</div>
+
+<!-- Backup Archives Catalog -->
+<div class="admin-card">
+    <div class="admin-card-header">
+        <h2 class="admin-card-title">&#128451;&#65039; Backup Snapshots Archive</h2>
+    </div>
+
+    {% if page_obj %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Archive Filename</th>
+                        <th>Tier</th>
+                        <th>Target</th>
+                        <th>Size</th>
+                        <th>Security</th>
+                        <th>Status</th>
+                        <th>Created (UTC)</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in page_obj %}
+                    <tr>
+                        <td style="font-family: monospace; font-size: 0.85rem;">{{ rec.filename }}</td>
+                        <td><span class="badge-tier-{{ rec.tier|lower }}">{{ rec.tier }}</span></td>
+                        <td><span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.75rem;">{{ rec.storage_type }}</span></td>
+                        <td>{{ rec.file_size|filesizeformat }}</td>
+                        <td>
+                            {% if rec.is_encrypted %}
+                                <span style="color: #16a34a; font-weight: 700;" title="AES-256-GCM Encrypted">&#128274; AES-GCM</span>
+                            {% else %}
+                                <span style="color: var(--text-muted); font-size: 0.8rem;">Gzip</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if rec.status == 'SUCCESS' %}
+                                <span style="color: #16a34a; font-weight: 700;">&#10003; Success</span>
+                            {% else %}
+                                <span style="color: #dc2626; font-weight: 700;" title="{{ rec.error_message }}">&#10007; Failed</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 0.85rem; color: var(--text-muted);">{{ rec.created_at|date:"Y-m-d H:i:s" }}</td>
+                        <td style="text-align: right; white-space: nowrap;">
+                            <a href="{% url 'download_backup' rec.uuid %}" class="btn btn-secondary btn-sm" title="Download snapshot file">&#11015;&#65039;</a>
+                            
+                            <form method="post" action="{% url 'restore_backup_view' rec.uuid %}" style="display: inline;" onsubmit="return confirmRestore(this, '{{ rec.filename }}', {{ rec.is_encrypted|yesno:'true,false' }});">
+                                {% csrf_token %}
+                                <input type="hidden" name="passphrase" class="restore-passphrase-field" value="">
+                                <button type="submit" class="btn btn-warning btn-sm" title="Restore this database snapshot">&#9850; Restore</button>
+                            </form>
+
+                            <form method="post" action="{% url 'delete_backup' rec.uuid %}" style="display: inline;" onsubmit="return confirm('Permanently delete backup snapshot \'{{ rec.filename }}\'?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm" title="Delete snapshot">&#128465;</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm">&larr; Previous</a>
+                {% endif %}
+                <span style="align-self: center; font-size: 0.9rem; color: var(--text-muted);">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm">Next &rarr;</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    {% else %}
+        <p style="color: var(--text-muted); font-size: 0.95rem;">No backup archives recorded yet. Click "Create Manual Snapshot Now" to test.</p>
+    {% endif %}
+</div>
+
+<script>
+function toggleStorageFields() {
+    const st = document.getElementById('storage_type').value;
+    document.getElementById('local_config_block').style.display = st === 'LOCAL' ? 'block' : 'none';
+    document.getElementById('s3_config_block').style.display = st === 'S3' ? 'block' : 'none';
+    document.getElementById('cifs_config_block').style.display = st === 'CIFS' ? 'block' : 'none';
+    document.getElementById('nfs_config_block').style.display = st === 'NFS' ? 'block' : 'none';
+}
+
+function testTargetConnection() {
+    const resElem = document.getElementById('test_conn_result');
+    resElem.innerHTML = '<span style="color:var(--text-muted);">Testing connection...</span>';
+    
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    formData.append('storage_type', document.getElementById('storage_type').value);
+    formData.append('local_path', document.getElementById('local_path').value);
+    formData.append('s3_bucket', document.getElementById('s3_bucket').value);
+    formData.append('s3_region', document.getElementById('s3_region').value);
+    formData.append('s3_access_key', document.getElementById('s3_access_key').value);
+    formData.append('s3_secret_key', document.getElementById('s3_secret_key').value);
+    formData.append('s3_endpoint_url', document.getElementById('s3_endpoint_url').value);
+    formData.append('s3_prefix', document.getElementById('s3_prefix').value);
+    formData.append('cifs_server', document.getElementById('cifs_server').value);
+    formData.append('cifs_share', document.getElementById('cifs_share').value);
+    formData.append('cifs_subpath', document.getElementById('cifs_subpath').value);
+    formData.append('cifs_username', document.getElementById('cifs_username').value);
+    formData.append('cifs_password', document.getElementById('cifs_password').value);
+    formData.append('cifs_domain', document.getElementById('cifs_domain').value);
+    formData.append('nfs_server', document.getElementById('nfs_server').value);
+    formData.append('nfs_export', document.getElementById('nfs_export').value);
+    formData.append('nfs_subpath', document.getElementById('nfs_subpath').value);
+
+    fetch('{% url "backup_test_connection_api" %}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            resElem.innerHTML = '<span style="color:#16a34a;">&#10003; ' + data.message + '</span>';
+        } else {
+            resElem.innerHTML = '<span style="color:#dc2626;">&#10007; ' + data.message + '</span>';
+        }
+    })
+    .catch(err => {
+        resElem.innerHTML = '<span style="color:#dc2626;">&#10007; Connection failed: ' + err + '</span>';
+    });
+}
+
+function confirmRestore(form, filename, isEncrypted) {
+    if (!confirm('CAUTION: Restoring from snapshot \"' + filename + '\" will overwrite all database tables with this snapshot. Continue?')) {
+        return false;
+    }
+    if (isEncrypted) {
+        const pass = prompt('This backup snapshot is encrypted. Enter AES-256-GCM decryption passphrase:');
+        if (pass === null) return false;
+        form.querySelector('.restore-passphrase-field').value = pass;
+    }
+    return true;
+}
+
+// Initial display on load
+toggleStorageFields();
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% block title %}Master Pools &bull; {{ league.name }} &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">&#127967;&#65039; Master Pools &bull; {{ league.name }}</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Manage certified venues, fields, and officials eligible for reuse across all past and future seasons.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{% url 'season_list' league.id %}" class="btn btn-secondary">&larr; Seasons in this League</a>
+    </div>
+</div>
+
+<div class="form-grid-2">
+    <!-- Venues & Fields Pool -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#128205; Venues &amp; Fields Pool</h2>
+            <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem;">
+                {{ venues.count }} Field{{ venues.count|pluralize }}
+            </span>
+        </div>
+
+        <!-- Add Venue Form -->
+        <form method="post" action="{% url 'add_league_venue' league.id %}" style="margin-bottom: 1.5rem; background: var(--surface-alt); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--border);">
+            {% csrf_token %}
+            <h4 style="margin: 0 0 0.75rem 0; font-size: 0.95rem;">+ Add New Venue / Diamond / Gym</h4>
+            <div style="margin-bottom: 0.75rem;">
+                <label for="venue_name" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Venue / Field Name *</label>
+                <input type="text" name="name" id="venue_name" class="form-control" placeholder="e.g. Heritage Park Field #2" required style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+                <label for="venue_address" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Address / Directions</label>
+                <input type="text" name="address" id="venue_address" class="form-control" placeholder="e.g. 100 Heritage Way" style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+                <label for="venue_notes" style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Notes (Gate codes, lighting, dugout rules)</label>
+                <input type="text" name="notes" id="venue_notes" class="form-control" placeholder="e.g. Light switch box on 1st base side" style="width: 100%;">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700;">Add Venue to Master Pool</button>
+        </form>
+
+        <!-- Venues List -->
+        {% if venues %}
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Field Name</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in venues %}
+                        <tr>
+                            <td>
+                                <div style="font-weight: 700;">{{ v.name }}</div>
+                                {% if v.address %}<div style="font-size: 0.8rem; color: var(--text-muted);">&#128205; {{ v.address }}</div>{% endif %}
+                                {% if v.notes %}<div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">{{ v.notes }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {% if v.is_active %}
+                                    <span style="color: #16a34a; font-weight: 700; font-size: 0.85rem;">Active</span>
+                                {% else %}
+                                    <span style="color: #dc2626; font-weight: 700; font-size: 0.85rem;">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right; white-space: nowrap;">
+                                <form method="post" action="{% url 'toggle_league_venue' league.id v.id %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-secondary btn-sm" title="Toggle active status">
+                                        {% if v.is_active %}&#128504; Deactivate{% else %}&#9989; Activate{% endif %}
+                                    </button>
+                                </form>
+                                <form method="post" action="{% url 'delete_league_venue' league.id v.id %}" style="display: inline;" onsubmit="return confirm('Remove venue \'{{ v.name }}\' from league master pool?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Delete">&#128465;</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="color: var(--text-muted); font-size: 0.95rem;">No venues added to this league pool yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Certified Officials Pool -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">&#127937; Master Officials Pool</h2>
+            <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem;">
+                {{ officials.count }} Official{{ officials.count|pluralize }}
+            </span>
+        </div>
+
+        <!-- Add Official Form -->
+        <form method="post" action="{% url 'add_league_official' league.id %}" style="margin-bottom: 1.5rem; background: var(--surface-alt); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--border);">
+            {% csrf_token %}
+            <h4 style="margin: 0 0 0.75rem 0; font-size: 0.95rem;">+ Certify &amp; Add Official to Pool</h4>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <select name="user_id" class="form-control" style="flex: 1; min-width: 200px;" required>
+                    <option value="">Select User to Certify...</option>
+                    {% for u in available_users %}
+                        <option value="{{ u.id }}">{{ u.display_name }} (@{{ u.username }}) - {{ u.get_role_display }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700;">Add Official</button>
+            </div>
+        </form>
+
+        <!-- Officials List -->
+        {% if officials %}
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Official</th>
+                            <th>Role</th>
+                            <th style="text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for off in officials %}
+                        <tr>
+                            <td>
+                                <div style="font-weight: 700;">{{ off.display_name }}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">@{{ off.username }}</div>
+                            </td>
+                            <td>
+                                <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.75rem;">
+                                    {{ off.get_role_display }}
+                                </span>
+                            </td>
+                            <td style="text-align: right;">
+                                <form method="post" action="{% url 'remove_league_official' league.id off.id %}" style="display: inline;" onsubmit="return confirm('Remove {{ off.display_name }} from master officials pool?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Remove from pool">&#10007; Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="color: var(--text-muted); font-size: 0.95rem;">No officials assigned to this league pool yet. Any new season created will automatically inherit officials added here.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
