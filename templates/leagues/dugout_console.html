@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Dugout Operator Console | {{ game.team2.name }} at {{ game.team1.name }}{% endblock %}
+{% block title %}Dugout & Scorekeeper Console | {{ game.team2.name }} at {{ game.team1.name }}{% endblock %}
 
 {% block content %}
 <style>
+  /* Base Dugout Scoreboard */
   .console-scoreboard {
     background: #0f172a;
     color: #fff;
@@ -47,6 +48,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 4px;
+    transition: all 0.15s ease;
   }
   .base-btn span {
     transform: rotate(-45deg);
@@ -56,7 +58,7 @@
     background: #f59e0b;
     border-color: #fde68a;
     color: #0f172a;
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.75);
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.85);
   }
   .base-2b { top: 8px; left: 61px; }
   .base-3b { top: 61px; left: 8px; }
@@ -72,28 +74,115 @@
   }
   .action-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 0.65rem;
   }
   .action-btn {
-    padding: 0.95rem 0.75rem;
-    font-size: 1rem;
+    padding: 0.85rem 0.65rem;
+    font-size: 0.95rem;
     font-weight: 700;
     border-radius: 0.55rem;
     border: none;
     cursor: pointer;
     text-align: center;
     color: #fff;
-    transition: transform 0.08s ease;
+    transition: transform 0.08s ease, filter 0.15s ease;
   }
   .action-btn:active {
     transform: scale(0.97);
   }
-  .btn-next-batter { background: #2563eb; grid-column: span 2; font-size: 1.15rem; }
+  .btn-next-batter { background: #2563eb; grid-column: span 2; font-size: 1.1rem; }
   .btn-hit { background: #16a34a; }
-  .btn-walk { background: #0d9488; }
+  .btn-double { background: #059669; }
+  .btn-triple { background: #0d9488; }
+  .btn-walk { background: #0284c7; }
   .btn-hr { background: #d97706; }
   .btn-out { background: #dc2626; }
+  .btn-sac { background: #7c3aed; }
+  .btn-fc { background: #4f46e5; }
+  .btn-k { background: #991b1b; }
+  .btn-err { background: #64748b; }
+  .btn-dp { background: #b91c1c; }
+  .btn-tiebreaker { background: #854d0e; }
+
+  /* Count display box */
+  .count-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #1e293b;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    font-size: 0.95rem;
+  }
+  .count-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 2px solid #64748b;
+    background: transparent;
+  }
+  .count-dot.filled-ball {
+    background: #38bdf8;
+    border-color: #7dd3fc;
+    box-shadow: 0 0 6px rgba(56, 189, 248, 0.7);
+  }
+  .count-dot.filled-strike {
+    background: #ef4444;
+    border-color: #fca5a5;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+  }
+
+  /* Simple Mode Giant Controls */
+  .simple-mode-wrap {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .btn-giant {
+    padding: 1.4rem 1rem;
+    font-size: 1.25rem;
+    font-weight: 800;
+    border-radius: 8px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+  }
+
+  /* Basketball & Volleyball styles */
+  .bonus-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-block;
+  }
+  .bonus-active { background: #f59e0b; color: #000; animation: pulse 1.5s infinite; }
+  .double-bonus-active { background: #ef4444; color: #fff; animation: pulse 1s infinite; }
+
+  /* Bleacher / Direct Sunlight Mode (Ultra-High Contrast) */
+  body.bleacher-mode {
+    background: #000000 !important;
+    color: #ffffff !important;
+  }
+  body.bleacher-mode .card,
+  body.bleacher-mode .console-scoreboard,
+  body.bleacher-mode .score-team-box {
+    background: #000000 !important;
+    border: 3px solid #fbbf24 !important;
+    color: #ffffff !important;
+  }
+  body.bleacher-mode .action-btn,
+  body.bleacher-mode .btn {
+    border: 2px solid #ffffff !important;
+    font-weight: 900 !important;
+  }
+
   .lineup-row {
     display: flex;
     justify-content: space-between;
@@ -121,17 +210,78 @@
     background: #e2e8f0;
     border: 1px solid #cbd5e1;
   }
+
+  /* Segmented Mode Control */
+  .mode-switch-group {
+    display: inline-flex;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .mode-switch-btn {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mode-switch-btn.active {
+    background: var(--primary, #2563eb);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
 </style>
 
-<div class="page-header">
+<!-- Header & Quick Mode Tools -->
+<div class="page-header" style="align-items:flex-start;">
     <div>
-        <span class="badge badge-warning">Live Game Operator Console &amp; Audio DJ</span>
-        <h1>{{ game.team2.name }} (Away) vs {{ game.team1.name }} (Home)</h1>
-        <small style="color:var(--text-muted);">Sport: <strong>{{ game.season.league.get_sport_display|default:"Fellowship" }}</strong> &bull; {{ game.location }}</small>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
+            <span class="badge badge-warning">Live Game Operator Console &amp; Audio DJ</span>
+            <span id="wake-lock-badge" class="badge" style="background:#0f766e; color:#ccfbf1; display:none;">📱 Screen Awake</span>
+            <span id="run-limit-badge" class="badge badge-primary" style="display:none;">5-Run Max Inning</span>
+        </div>
+        <h1 style="margin-bottom:0.25rem;">{{ game.team2.name }} (Away) vs {{ game.team1.name }} (Home)</h1>
+        <small style="color:var(--text-muted);">
+            Sport: <strong>{{ game.season.league.get_sport_display|default:"Fellowship" }}</strong> &bull;
+            Venue: {{ game.venue.name|default:game.location }}
+        </small>
     </div>
-    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+
+    <!-- Universal Scorekeeper Controls Bar -->
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+        <!-- Simple vs Detailed Mode Switch -->
+        <div class="mode-switch-group">
+            <button type="button" class="mode-switch-btn" id="btn-mode-simple" onclick="setConsoleMode('simple')">⚡ Simple Mode</button>
+            <button type="button" class="mode-switch-btn active" id="btn-mode-detailed" onclick="setConsoleMode('detailed')">🔬 Detailed Mode</button>
+        </div>
+
+        <!-- Undo Button -->
+        <button type="button" id="btn-undo-top" class="btn btn-sm" style="background:#dc2626; color:#fff; font-weight:700;" onclick="sendAction('undo')" title="Undo Last Play">
+            ↩️ Undo
+        </button>
+
+        <!-- Bleacher Sun Mode Toggle -->
+        <button type="button" class="btn btn-sm btn-secondary" onclick="toggleBleacherMode()" title="Ultra-High Contrast Direct Sunlight Theme">
+            ☀️ Sun Mode
+        </button>
+
+        <!-- Rule Protest Button -->
+        <button type="button" class="btn btn-sm btn-secondary" onclick="openDisputeModal()" title="Flag Rule Interpretation Dispute">
+            ⚖️ Protest
+        </button>
+
+        <!-- Forfeit Button -->
+        <button type="button" class="btn btn-sm btn-secondary" onclick="openForfeitModal()" title="Record Official Forfeit">
+            🏁 Forfeit
+        </button>
+
         <button type="button" id="btn-precache" class="btn btn-sm btn-accent" onclick="precacheGameForOffline()">
-            &#128229; Cache Audio Offline
+            &#128229; Cache Audio
         </button>
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary btn-sm" target="_blank">Public GameCast &nearr;</a>
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary btn-sm">&larr; Box Score</a>
@@ -157,6 +307,28 @@
     </form>
 </div>
 
+<!-- Inning Run Limit Notification Banner -->
+<div id="inning-run-limit-banner" style="display:none; margin-bottom:1rem; background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; padding:0.75rem 1rem; border-radius:6px; color:#1e40af; font-size:0.9rem;">
+    ⚡ <strong>Inning Run Limit:</strong> <span id="inning-run-count">0</span> of <span id="inning-run-max">5</span> runs scored this half-inning. Side will auto-retire at max.
+</div>
+
+<!-- Mercy Rule Alert Banner -->
+<div id="mercy-rule-banner" style="display:none; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; padding:0.85rem 1.15rem; border-radius:6px; color:#991b1b;">
+    <div>
+        <strong>⚠️ Mercy Rule Margin Reached:</strong>
+        <span id="mercy-rule-msg">Lead satisfies church league mercy threshold.</span>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <button type="button" class="btn btn-sm btn-accent" style="background:#dc2626; color:#fff;" onclick="sendAction('mark_final')">Conclude Game Early</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('mercy-rule-banner').style.display='none'">Continue Fellowship</button>
+    </div>
+</div>
+
+<!-- Time Limit Alert Banner -->
+<div id="time-limit-banner" style="display:none; margin-bottom:1rem; background:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:0.75rem 1rem; border-radius:6px; color:#92400e; font-size:0.9rem;">
+    ⏳ <strong>Time Limit Notice:</strong> 50 minutes reached. No new inning may start after the current inning concludes!
+</div>
+
 <!-- Offline Resilience & Sync Status Bar -->
 <div class="offline-status-bar" id="status-bar">
     <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -179,11 +351,15 @@
                 <small style="color:#94a3b8;">AWAY</small>
                 <div style="font-size:1.15rem; font-weight:700;" id="team2-name">{{ game.team2.name }}</div>
                 <small style="color:#cbd5e1;">Hits: <span id="team2-hits">0</span></small>
+                <div id="team2-bonus-wrap" style="display:none; margin-top:0.25rem;">
+                    <span id="team2-bonus-badge" class="bonus-badge"></span>
+                    <small style="color:#94a3b8; margin-left:0.35rem;">Fouls: <span id="team2-fouls-val">0</span></small>
+                </div>
             </div>
             <div style="display:flex; align-items:center; gap:0.6rem;">
                 <div>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_minus', {team:'team2'})">-</button>
-                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team2'})">+1 R</button>
+                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team2'})">+1</button>
                 </div>
                 <span class="score-big" id="team2-score">0</span>
             </div>
@@ -193,18 +369,22 @@
                 <small style="color:#94a3b8;">HOME</small>
                 <div style="font-size:1.15rem; font-weight:700;" id="team1-name">{{ game.team1.name }}</div>
                 <small style="color:#cbd5e1;">Hits: <span id="team1-hits">0</span></small>
+                <div id="team1-bonus-wrap" style="display:none; margin-top:0.25rem;">
+                    <span id="team1-bonus-badge" class="bonus-badge"></span>
+                    <small style="color:#94a3b8; margin-left:0.35rem;">Fouls: <span id="team1-fouls-val">0</span></small>
+                </div>
             </div>
             <div style="display:flex; align-items:center; gap:0.6rem;">
                 <div>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_minus', {team:'team1'})">-</button>
-                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1'})">+1 R</button>
+                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('run_plus', {team:'team1'})">+1</button>
                 </div>
                 <span class="score-big" id="team1-score">0</span>
             </div>
         </div>
     </div>
 
-    <!-- Inning, Outs & Interactive Base Diamond (Softball/Baseball only) OR Period Tracker (Basketball/Volleyball/Etc) -->
+    <!-- Inning, Outs & Interactive Base Diamond (Softball/Baseball) OR Period Tracker -->
     <div style="text-align:center;">
         <div style="font-size:1.25rem; font-weight:700; margin-bottom:0.25rem;">
             <span id="period-display">
@@ -212,15 +392,32 @@
             </span>
             <span id="outs-container">&bull; <span style="color:#fde68a;" id="outs-display">0 Outs</span></span>
         </div>
+
+        <!-- Diamond Count Display (Detailed Mode) -->
+        <div id="count-tracker-wrap" style="margin-bottom:0.5rem; display:none;">
+            <div class="count-box">
+                <span style="color:#cbd5e1; font-weight:700;">Balls:</span>
+                <span id="ball-dot-1" class="count-dot"></span>
+                <span id="ball-dot-2" class="count-dot"></span>
+                <span id="ball-dot-3" class="count-dot"></span>
+                <span style="color:#cbd5e1; font-weight:700; margin-left:0.5rem;">Strikes:</span>
+                <span id="strike-dot-1" class="count-dot"></span>
+                <span id="strike-dot-2" class="count-dot"></span>
+                <span id="courtesy-foul-badge" class="badge" style="background:#475569; font-size:0.7rem; display:none;">Courtesy Used</span>
+            </div>
+        </div>
+
         <div id="diamond-section">
-            <small style="color:#94a3b8;">Tap any base to toggle runner</small>
+            <small style="color:#94a3b8;">Tap base to advance/manage runner</small>
             <div class="diamond-wrap">
-                <button type="button" id="base-2B" class="base-btn base-2b" onclick="sendAction('toggle_base', {base:'2B'})"><span>2B</span></button>
-                <button type="button" id="base-3B" class="base-btn base-3b" onclick="sendAction('toggle_base', {base:'3B'})"><span>3B</span></button>
-                <button type="button" id="base-1B" class="base-btn base-1b" onclick="sendAction('toggle_base', {base:'1B'})"><span>1B</span></button>
+                <button type="button" id="base-2B" class="base-btn base-2b" onclick="handleBaseClick('2B')"><span>2B</span></button>
+                <button type="button" id="base-3B" class="base-btn base-3b" onclick="handleBaseClick('3B')"><span>3B</span></button>
+                <button type="button" id="base-1B" class="base-btn base-1b" onclick="handleBaseClick('1B')"><span>1B</span></button>
                 <div class="base-home" title="Home Plate"></div>
             </div>
         </div>
+
+        <!-- Court / Field Non-Diamond Scoring Shortcuts -->
         <div id="non-diamond-quick-score" style="display:none; margin-top:0.75rem;">
             <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
                 <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('run_plus', {team:'team2', points:1})">+1 Away</button>
@@ -257,69 +454,141 @@
     </div>
 </div>
 
-<!-- 1-Tap Operator Action Pad -->
+<!-- ========================================================================= -->
+<!-- 1-Tap Operator Action Pad (Simple Mode vs Detailed Mode) -->
+<!-- ========================================================================= -->
 <div class="grid grid-2" style="margin-bottom:1.5rem;">
     <div class="card">
-        <h2 id="action-pad-title">1-Tap Game Controls &amp; Player Jams</h2>
-        <p style="margin-top:0; font-size:0.88rem; color:var(--text-muted);" id="action-pad-desc">
-            Advance player rotations, update score, and cue up walk-up/intro music with 1 tap.
-        </p>
-
-        <!-- Softball/Baseball At-Bat Controls -->
-        <div id="diamond-action-grid" class="action-grid">
-            <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
-                &#9654; NEXT BATTER / ROTATION (Play Song)
-            </button>
-            <button type="button" class="action-btn btn-hit" onclick="sendAction('single')">
-                BASE HIT (1B)
-            </button>
-            <button type="button" class="action-btn btn-walk" onclick="sendAction('walk')">
-                WALK / BB
-            </button>
-            <button type="button" class="action-btn btn-hr" onclick="sendAction('homerun')">
-                HOME RUN!
-            </button>
-            <button type="button" class="action-btn btn-out" onclick="sendAction('out')">
-                +1 OUT
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <h2 id="action-pad-title" style="margin:0;">1-Tap Game Controls</h2>
+            <button type="button" id="btn-undo-pad" class="btn btn-sm" style="background:#dc2626; color:#fff; font-weight:700;" onclick="sendAction('undo')">
+                ↩️ Undo Last Play
             </button>
         </div>
 
-        <!-- Universal Court/Field Controls (Basketball, Volleyball, Pickleball, Flag Football) -->
-        <div id="court-action-grid" style="display:none;" class="action-grid">
-            <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
-                &#9654; NEXT SERVER / PLAYER ROTATION (Play Song)
-            </button>
-            <button type="button" class="action-btn btn-hit" onclick="sendAction('run_plus', {team:'batting', points:1})">
-                +1 POINT
-            </button>
-            <button type="button" class="action-btn btn-walk" onclick="sendAction('run_plus', {team:'batting', points:2})">
-                +2 POINTS
-            </button>
-            <button type="button" class="action-btn btn-hr" onclick="sendAction('run_plus', {team:'batting', points:3})">
-                +3 POINTS
-            </button>
-            <button type="button" class="action-btn btn-out" onclick="sendAction('flip_half')">
-                ADVANCE PERIOD
-            </button>
+        <!-- 1. SIMPLE MODE SECTION -->
+        <div id="simple-mode-section" style="display:none;">
+            <p style="margin-top:0; font-size:0.85rem; color:var(--text-muted);">
+                Big-button scoring for casual volunteers:
+            </p>
+            <div class="simple-mode-wrap">
+                <button type="button" class="btn-giant" style="background:#16a34a;" onclick="sendAction('run_plus', {team:'batting', points:1})">
+                    +1 RUN / PT
+                </button>
+                <button type="button" class="btn-giant" style="background:#dc2626;" onclick="sendAction('out')">
+                    +1 OUT
+                </button>
+                <button type="button" class="btn-giant btn-next-batter" style="grid-column:span 2;" onclick="sendAction('next_batter')">
+                    &#9654; NEXT BATTER / ROTATION
+                </button>
+                <button type="button" class="btn-giant" style="background:#475569;" onclick="sendAction('flip_half')">
+                    Advance Half / Period
+                </button>
+                <button type="button" class="btn-giant" style="background:#b91c1c;" onclick="sendAction('run_minus', {team:'batting', points:1})">
+                    -1 Run (Correction)
+                </button>
+            </div>
         </div>
 
-        <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('flip_half')">
-                <span id="flip-half-btn-text">Next Period / Inning Half</span>
-            </button>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('mark_final')">
-                Mark Game Completed / Final
-            </button>
+        <!-- 2. DETAILED MODE SECTION -->
+        <div id="detailed-mode-section">
+            <!-- Softball/Baseball Detailed Count Buttons -->
+            <div id="count-buttons-strip" style="display:none; margin-bottom:0.75rem; background:var(--surface); border:1px solid var(--border); padding:0.5rem; border-radius:6px;">
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                    <span style="font-size:0.85rem; font-weight:700;">Plate Count:</span>
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('count_ball')">+ Ball</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('count_strike')">+ Strike</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('count_foul')">Foul Ball</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('reset_count')">Reset Count</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diamond Action Grid -->
+            <div id="diamond-action-grid" class="action-grid">
+                <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
+                    &#9654; NEXT BATTER / ROTATION
+                </button>
+                <button type="button" class="action-btn btn-hit" onclick="sendAction('single')">1B Single</button>
+                <button type="button" class="action-btn btn-double" onclick="sendAction('double')">2B Double</button>
+                <button type="button" class="action-btn btn-triple" onclick="sendAction('triple')">3B Triple</button>
+                <button type="button" class="action-btn btn-hr" onclick="sendAction('homerun')">Home Run!</button>
+                <button type="button" class="action-btn btn-walk" onclick="sendAction('walk')">Walk / BB</button>
+                <button type="button" class="action-btn btn-sac" onclick="sendAction('sacrifice_fly')">Sac Fly / RBI</button>
+                <button type="button" class="action-btn btn-fc" onclick="sendAction('fielders_choice')">Fielder's Choice</button>
+                <button type="button" class="action-btn btn-k" onclick="sendAction('strikeout', {style:'swinging'})">Strikeout (K)</button>
+                <button type="button" class="action-btn btn-err" onclick="sendAction('reached_on_error')">Error (E)</button>
+                <button type="button" class="action-btn btn-out" onclick="sendAction('out')">+1 Out</button>
+                <button type="button" class="action-btn btn-dp" onclick="sendAction('double_play')">Double Play (DP)</button>
+            </div>
+
+            <!-- Court Action Grid (Basketball, Volleyball, Soccer, Flag Football) -->
+            <div id="court-action-grid" style="display:none;" class="action-grid">
+                <button type="button" class="action-btn btn-next-batter" onclick="sendAction('next_batter')">
+                    &#9654; NEXT SERVER / ROTATION
+                </button>
+                <button type="button" class="action-btn btn-hit" onclick="sendAction('run_plus', {team:'batting', points:1})">+1 POINT</button>
+                <button type="button" class="action-btn btn-double" onclick="sendAction('run_plus', {team:'batting', points:2})">+2 POINTS</button>
+                <button type="button" class="action-btn btn-triple" onclick="sendAction('run_plus', {team:'batting', points:3})">+3 POINTS</button>
+                <button type="button" class="action-btn btn-out" onclick="sendAction('flip_half')">ADVANCE PERIOD</button>
+            </div>
+
+            <!-- Basketball Court Specific Controls -->
+            <div id="basketball-court-controls" style="display:none; margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem;">
+                <h4 style="margin:0 0 0.5rem 0; font-size:0.92rem;">🏀 Basketball Fouls &amp; Timeouts</h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                    <div style="background:var(--surface); border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <strong>{{ game.team2.name }} (Away)</strong>
+                        <div style="display:flex; gap:0.4rem; margin-top:0.35rem; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('team_foul', {team:'team2'})">+ Team Foul</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('use_timeout', {team:'team2'})">Timeout (TO)</button>
+                        </div>
+                    </div>
+                    <div style="background:var(--surface); border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <strong>{{ game.team1.name }} (Home)</strong>
+                        <div style="display:flex; gap:0.4rem; margin-top:0.35rem; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('team_foul', {team:'team1'})">+ Team Foul</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('use_timeout', {team:'team1'})">Timeout (TO)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Volleyball Sets Specific Controls -->
+            <div id="volleyball-court-controls" style="display:none; margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem;">
+                <h4 style="margin:0 0 0.5rem 0; font-size:0.92rem;">🏐 Volleyball Set Progression</h4>
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                    <button type="button" class="btn btn-sm btn-accent" onclick="sendAction('volleyball_point', {team:'team1'})">+1 Home Set Pt</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('volleyball_point', {team:'team2'})">+1 Away Set Pt</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('switch_serve')">Switch Server</button>
+                </div>
+                <div id="volleyball-sets-summary" style="margin-top:0.5rem; font-size:0.85rem; color:var(--text-muted);"></div>
+            </div>
+
+            <!-- Advanced / Infrequent Occurrences -->
+            <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:0.75rem;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('flip_half')">
+                    <span id="flip-half-btn-text">Next Period / Inning Half</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('international_tiebreaker')">
+                    Tiebreaker (Runner on 2B)
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('mark_final')">
+                    Mark Game Completed / Final
+                </button>
+            </div>
         </div>
     </div>
 
+    <!-- Live Play-by-Play Audit Feed -->
     <div class="card">
         <h2>Live Play-by-Play Feed</h2>
-        <ul id="play-by-play-list" style="margin:0; padding-left:1.1rem; max-height:240px; overflow-y:auto;"></ul>
+        <ul id="play-by-play-list" style="margin:0; padding-left:1.1rem; max-height:280px; overflow-y:auto;"></ul>
     </div>
 </div>
 
-<!-- 1-Tap Lineup Order & Game-Day Attendance Check-In -->
+<!-- Lineup Order & Attendance Check-In -->
 <div class="grid grid-2">
     <div class="card">
         <h2>{{ game.team2.name }} (Away) Lineup &amp; Check-In</h2>
@@ -338,7 +607,71 @@
     </div>
 </div>
 
-<!-- In-Game Quick Substitution Modal -->
+<!-- ========================================================================= -->
+<!-- MODALS -->
+<!-- ========================================================================= -->
+
+<!-- 1. Base Runner Advance / Out Action Modal -->
+<div id="runnerModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; max-width:400px; width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
+        <h3 style="margin-top:0; font-size:1.15rem;">🏃 Basepath Action (<span id="runnerBaseLabel"></span>)</h3>
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:1rem;">
+            Choose runner action or toggle base:
+        </p>
+        <div style="display:grid; gap:0.5rem;">
+            <button type="button" class="btn btn-accent" id="btn-advance-base" onclick="executeRunnerAction('advance')">Advance to Next Base &rarr;</button>
+            <button type="button" class="btn" style="background:#16a34a; color:#fff;" onclick="executeRunnerAction('score')">Score at Home Plate (+1 Run)</button>
+            <button type="button" class="btn" style="background:#dc2626; color:#fff;" onclick="executeRunnerAction('out')">Tag / Force Out on Basepath (+1 Out)</button>
+            <button type="button" class="btn btn-secondary" onclick="executeRunnerAction('toggle')">Clear Runner from Base</button>
+            <button type="button" class="btn btn-secondary" onclick="closeRunnerModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Rule Protest / Dispute Modal -->
+<div id="disputeModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; max-width:480px; width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
+        <h3 style="margin-top:0; font-size:1.2rem;">⚖️ Flag Rule Interpretation Dispute</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">
+            Captures current score, inning, runners, and batter into the official audit trail for post-game committee review:
+        </p>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">Dispute Notes / Rule Cited:</label>
+            <textarea id="disputeNotesInput" class="input" rows="3" placeholder="e.g. Friendly dispute over force play at 2nd base with 1 out..."></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeDisputeModal()">Cancel</button>
+            <button type="button" class="btn" style="background:#d97706; color:#fff;" onclick="submitDispute()">Save Protest to Game Log</button>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Record Official Forfeit Modal -->
+<div id="forfeitModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; max-width:480px; width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
+        <h3 style="margin-top:0; font-size:1.2rem;">🏁 Record Official Forfeit</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">
+            Select the team awarded the forfeit victory. Official church league score (7-0 for softball, 2-0 for court) will be assigned:
+        </p>
+        <div style="margin-bottom:0.75rem;">
+            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">Award Victory To:</label>
+            <select id="forfeitWinnerSelect" class="input">
+                <option value="{{ game.team1.id }}">{{ game.team1.name }} (Home)</option>
+                <option value="{{ game.team2.id }}">{{ game.team2.name }} (Away)</option>
+            </select>
+        </div>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">Forfeit Reason:</label>
+            <input type="text" id="forfeitReasonInput" class="input" value="Opponent unable to field minimum roster by game time">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeForfeitModal()">Cancel</button>
+            <button type="button" class="btn" style="background:#dc2626; color:#fff;" onclick="submitForfeit()">Confirm &amp; Finalize Forfeit</button>
+        </div>
+    </div>
+</div>
+
+<!-- 4. Quick Substitution Modal -->
 <div id="subModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
     <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; max-width:450px; width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
         <h3 style="margin-top:0; font-size:1.2rem;">🔄 Dugout Quick Substitution</h3>
@@ -346,42 +679,172 @@
             Outgoing Player: <strong id="subOutPlayerName" style="color:var(--text);"></strong>
         </p>
         <div style="margin-bottom:1rem;">
-            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">
-                Select Incoming Bench Player:
-            </label>
-            <select id="subIncomingSelect" class="form-input" style="width:100%; font-size:0.9rem; padding:0.5rem; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px;">
-            </select>
+            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">Select Incoming Bench Player:</label>
+            <select id="subIncomingSelect" class="input" style="width:100%;"></select>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
             <button type="button" class="btn btn-secondary" onclick="closeSubModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmSub()">Confirm Sub</button>
+            <button type="button" class="btn btn-accent" onclick="confirmSub()">Confirm Sub</button>
         </div>
     </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- JAVASCRIPT CONSOLE ENGINE -->
+<!-- ========================================================================= -->
 <script>
 const GAME_ID = {{ game.id }};
 const ACTION_URL = "{% url 'dugout_action' game.id %}";
 const SYNC_URL = "{% url 'dugout_batch_sync' game.id %}";
 const CSRF_TOKEN = "{{ csrf_token }}";
-const QUEUE_STORAGE_KEY = `csl_offline_queue_${GAME_ID}`;
-const STATE_STORAGE_KEY = `csl_local_state_${GAME_ID}`;
 
-let gameState = {{ initial_state_json|safe }};
+const QUEUE_STORAGE_KEY = `sportsball_dugout_queue_${GAME_ID}`;
+const STATE_STORAGE_KEY = `sportsball_dugout_state_${GAME_ID}`;
+const MODE_STORAGE_KEY = `sportsball_console_mode_${GAME_ID}`;
+
+let gameState = {
+    team1_score: {{ game.team1_score }},
+    team2_score: {{ game.team2_score }},
+    team1_hits: {{ game.team1_hits }},
+    team2_hits: {{ game.team2_hits }},
+    current_inning: {{ game.current_inning }},
+    inning_half: '{{ game.inning_half }}',
+    inning_half_display: '{% if game.inning_half == "top" %}Top{% else %}Bottom{% endif %}',
+    batting_team_name: '{{ game.batting_team.name|escapejs }}',
+    outs: {{ game.outs }},
+    balls: {{ game.balls|default:0 }},
+    strikes: {{ game.strikes|default:0 }},
+    runner_on_first: {{ game.runner_on_first|yesno:"true,false" }},
+    runner_on_second: {{ game.runner_on_second|yesno:"true,false" }},
+    runner_on_third: {{ game.runner_on_third|yesno:"true,false" }},
+    is_diamond_sport: {{ game.season.league.is_diamond_sport|yesno:"true,false" }},
+    inning_run_limit: {{ game.season.league.inning_run_limit|default:"null" }},
+    current_half_runs: {{ game.current_half_runs|default:0 }},
+    can_undo: false,
+    play_by_play: []
+};
+
 let walkupTimer = null;
-let isSyncing = false;
+let wakeLock = null;
 
-// Initialize or recover locally cached state
-try {
-    const savedState = localStorage.getItem(STATE_STORAGE_KEY);
-    if (savedState) {
-        const parsed = JSON.parse(savedState);
-        if (parsed && parsed.game_id === GAME_ID) {
-            // Use freshest state
-        }
+// Screen Wake Lock API
+async function requestScreenWakeLock() {
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            const badge = document.getElementById('wake-lock-badge');
+            if (badge) badge.style.display = 'inline-block';
+            wakeLock.addEventListener('release', () => {
+                if (badge) badge.style.display = 'none';
+            });
+        } catch (err) {}
     }
-} catch (e) {}
+}
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestScreenWakeLock();
+    }
+});
+requestScreenWakeLock();
 
+// Console Mode (Simple vs Detailed)
+function setConsoleMode(mode) {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+    const simpleBtn = document.getElementById('btn-mode-simple');
+    const detailedBtn = document.getElementById('btn-mode-detailed');
+    const simpleSec = document.getElementById('simple-mode-section');
+    const detailedSec = document.getElementById('detailed-mode-section');
+    const countWrap = document.getElementById('count-tracker-wrap');
+
+    if (mode === 'simple') {
+        simpleBtn.classList.add('active');
+        detailedBtn.classList.remove('active');
+        simpleSec.style.display = 'block';
+        detailedSec.style.display = 'none';
+        countWrap.style.display = 'none';
+    } else {
+        detailedBtn.classList.add('active');
+        simpleBtn.classList.remove('active');
+        simpleSec.style.display = 'none';
+        detailedSec.style.display = 'block';
+        if (gameState.is_diamond_sport) countWrap.style.display = 'inline-block';
+    }
+}
+
+// Bleacher Sun Mode
+function toggleBleacherMode() {
+    document.body.classList.toggle('bleacher-mode');
+}
+
+// Runner Base Modal
+let selectedBase = null;
+function handleBaseClick(base) {
+    selectedBase = base;
+    const isOccupied = (base === '1B' && gameState.runner_on_first) ||
+                       (base === '2B' && gameState.runner_on_second) ||
+                       (base === '3B' && gameState.runner_on_third);
+    if (!isOccupied) {
+        // Direct toggle if empty
+        sendAction('toggle_base', {base: base});
+    } else {
+        document.getElementById('runnerBaseLabel').textContent = base;
+        const advBtn = document.getElementById('btn-advance-base');
+        if (base === '1B') advBtn.textContent = 'Advance to 2nd Base &rarr;';
+        else if (base === '2B') advBtn.textContent = 'Advance to 3rd Base &rarr;';
+        else if (base === '3B') advBtn.textContent = 'Advance Home (+1 Run) &rarr;';
+        document.getElementById('runnerModal').style.display = 'flex';
+    }
+}
+function closeRunnerModal() {
+    document.getElementById('runnerModal').style.display = 'none';
+    selectedBase = null;
+}
+function executeRunnerAction(act) {
+    if (!selectedBase) return;
+    const base = selectedBase;
+    closeRunnerModal();
+    if (act === 'advance') {
+        const to = base === '1B' ? '2B' : (base === '2B' ? '3B' : 'home');
+        sendAction('advance_runner', {from_base: base, to_base: to});
+    } else if (act === 'score') {
+        sendAction('advance_runner', {from_base: base, to_base: 'home'});
+    } else if (act === 'out') {
+        sendAction('advance_runner', {from_base: base, to_base: 'out'});
+    } else if (act === 'toggle') {
+        sendAction('toggle_base', {base: base});
+    }
+}
+
+// Dispute Modal
+function openDisputeModal() {
+    document.getElementById('disputeModal').style.display = 'flex';
+}
+function closeDisputeModal() {
+    document.getElementById('disputeModal').style.display = 'none';
+}
+function submitDispute() {
+    const notes = document.getElementById('disputeNotesInput').value.trim();
+    if (!notes) { alert('Please enter notes regarding the rule protest.'); return; }
+    closeDisputeModal();
+    sendAction('flag_dispute', {notes: notes});
+}
+
+// Forfeit Modal
+function openForfeitModal() {
+    document.getElementById('forfeitModal').style.display = 'flex';
+}
+function closeForfeitModal() {
+    document.getElementById('forfeitModal').style.display = 'none';
+}
+function submitForfeit() {
+    const winnerId = document.getElementById('forfeitWinnerSelect').value;
+    const reason = document.getElementById('forfeitReasonInput').value.trim();
+    if (!confirm('Confirm recording an official forfeit? This will mark the game completed.')) return;
+    closeForfeitModal();
+    sendAction('record_forfeit', {winner_id: winnerId, notes: reason});
+}
+
+// Offline Queue Management
 function getOfflineQueue() {
     try {
         const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
@@ -391,10 +854,17 @@ function getOfflineQueue() {
     }
 }
 
-function saveOfflineQueue(queue) {
+function pushOfflineQueue(actionItem) {
+    const queue = getOfflineQueue();
+    queue.push(actionItem);
     try {
         localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
     } catch (e) {}
+    updateQueueIndicator();
+}
+
+function clearOfflineQueue() {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
     updateQueueIndicator();
 }
 
@@ -434,21 +904,10 @@ async function precacheGameForOffline() {
     cacheInd.textContent = 'Caching walk-up songs...';
 
     const urlsToCache = [];
-    const collectAudio = (lineup) => {
-        lineup.forEach(p => {
-            // Find player walkup url from initial data or audio elements
-        });
-    };
-
     if (window.caches) {
         try {
             const cache = await caches.open('csl-audio-v1');
-            const allPlayers = [...(gameState.team1_lineup || []), ...(gameState.team2_lineup || [])];
             let cachedCount = 0;
-
-            for (const p of allPlayers) {
-                // If player has walkup song url, fetch and put into cache
-            }
 
             if (gameState.current_batter && gameState.current_batter.walkup_song_url) {
                 urlsToCache.push(gameState.current_batter.walkup_song_url);
@@ -471,7 +930,7 @@ async function precacheGameForOffline() {
 
             cacheInd.className = 'badge badge-success';
             cacheInd.textContent = `✓ Offline Ready (${cachedCount} songs cached)`;
-            cacheBtn.textContent = '✓ Audio Cached for Ballpark';
+            cacheBtn.textContent = '✓ Audio Cached';
         } catch (e) {
             cacheInd.textContent = 'Cache complete';
         }
@@ -512,7 +971,7 @@ function playCurrentWalkup() {
     }, durationSec * 1000);
 }
 
-
+// Quick Substitutions
 let currentSubOutEntryId = null;
 let currentSubContainerId = null;
 
@@ -539,8 +998,7 @@ function openSubModal(outEntryId, outPlayerName, containerId) {
         });
     }
 
-    const modal = document.getElementById('subModal');
-    modal.style.display = 'flex';
+    document.getElementById('subModal').style.display = 'flex';
 }
 
 function closeSubModal() {
@@ -606,6 +1064,8 @@ function renderState(state) {
     const isDiamond = state.is_diamond_sport !== undefined ? state.is_diamond_sport : true;
     const scoreLabel = state.score_label || 'Pts';
     const periodLabel = state.period_label || 'Period';
+    const isBasketball = (state.sport === 'basketball');
+    const isVolleyball = (state.sport === 'volleyball');
 
     // Adapt UI for Diamond Sports vs Court/Field Sports
     document.getElementById('diamond-section').style.display = isDiamond ? 'block' : 'none';
@@ -613,6 +1073,72 @@ function renderState(state) {
     document.getElementById('outs-container').style.display = isDiamond ? 'inline' : 'none';
     document.getElementById('diamond-action-grid').style.display = isDiamond ? 'grid' : 'none';
     document.getElementById('court-action-grid').style.display = isDiamond ? 'none' : 'grid';
+    document.getElementById('count-buttons-strip').style.display = isDiamond ? 'block' : 'none';
+
+    // Basketball specifics
+    document.getElementById('basketball-court-controls').style.display = isBasketball ? 'block' : 'none';
+    document.getElementById('team1-bonus-wrap').style.display = isBasketball ? 'block' : 'none';
+    document.getElementById('team2-bonus-wrap').style.display = isBasketball ? 'block' : 'none';
+    if (isBasketball) {
+        document.getElementById('team1-fouls-val').textContent = state.team1_fouls || 0;
+        document.getElementById('team2-fouls-val').textContent = state.team2_fouls || 0;
+        const b1 = document.getElementById('team1-bonus-badge');
+        if (state.team1_double_bonus) { b1.textContent = 'DOUBLE BONUS'; b1.className = 'bonus-badge double-bonus-active'; }
+        else if (state.team1_bonus) { b1.textContent = 'BONUS (1-and-1)'; b1.className = 'bonus-badge bonus-active'; }
+        else { b1.textContent = ''; b1.className = 'bonus-badge'; }
+
+        const b2 = document.getElementById('team2-bonus-badge');
+        if (state.team2_double_bonus) { b2.textContent = 'DOUBLE BONUS'; b2.className = 'bonus-badge double-bonus-active'; }
+        else if (state.team2_bonus) { b2.textContent = 'BONUS (1-and-1)'; b2.className = 'bonus-badge bonus-active'; }
+        else { b2.textContent = ''; b2.className = 'bonus-badge'; }
+    }
+
+    // Volleyball specifics
+    document.getElementById('volleyball-court-controls').style.display = isVolleyball ? 'block' : 'none';
+    if (isVolleyball && state.volleyball_sets && state.volleyball_sets.length) {
+        const setLines = state.volleyball_sets.map(s => `Set ${s.set}: ${s.winner} (${s.team1_score}-${s.team2_score})`).join(' &bull; ');
+        document.getElementById('volleyball-sets-summary').innerHTML = `<strong>Sets Completed:</strong> ${setLines}`;
+    }
+
+    // Inning Run Limit Banner
+    const runLimitBadge = document.getElementById('run-limit-badge');
+    const runLimitBanner = document.getElementById('inning-run-limit-banner');
+    if (isDiamond && state.inning_run_limit) {
+        runLimitBadge.style.display = 'inline-block';
+        runLimitBadge.textContent = `${state.inning_run_limit}-Run Max Inning`;
+        runLimitBanner.style.display = 'block';
+        document.getElementById('inning-run-count').textContent = state.current_half_runs || 0;
+        document.getElementById('inning-run-max').textContent = state.inning_run_limit;
+    } else {
+        runLimitBadge.style.display = 'none';
+        runLimitBanner.style.display = 'none';
+    }
+
+    // Mercy Rule Banner
+    const mercyBanner = document.getElementById('mercy-rule-banner');
+    if (state.mercy_rule_alert && state.mercy_rule_alert.triggered) {
+        mercyBanner.style.display = 'flex';
+        document.getElementById('mercy-rule-msg').textContent = state.mercy_rule_alert.message;
+    } else {
+        mercyBanner.style.display = 'none';
+    }
+
+    // Count dots update
+    if (isDiamond) {
+        const balls = state.balls || 0;
+        const strikes = state.strikes || 0;
+        document.getElementById('ball-dot-1').className = 'count-dot' + (balls >= 1 ? ' filled-ball' : '');
+        document.getElementById('ball-dot-2').className = 'count-dot' + (balls >= 2 ? ' filled-ball' : '');
+        document.getElementById('ball-dot-3').className = 'count-dot' + (balls >= 3 ? ' filled-ball' : '');
+        document.getElementById('strike-dot-1').className = 'count-dot' + (strikes >= 1 ? ' filled-strike' : '');
+        document.getElementById('strike-dot-2').className = 'count-dot' + (strikes >= 2 ? ' filled-strike' : '');
+        const cfBadge = document.getElementById('courtesy-foul-badge');
+        if (state.courtesy_foul_used) {
+            cfBadge.style.display = 'inline-block';
+        } else {
+            cfBadge.style.display = 'none';
+        }
+    }
 
     if (isDiamond) {
         document.getElementById('inning-half-label').textContent = state.inning_half_display;
@@ -655,140 +1181,28 @@ function renderState(state) {
     renderLineup('team2-lineup-container', state.team2_lineup, currentBatterId);
     renderLineup('team1-lineup-container', state.team1_lineup, currentBatterId);
 
+    // Undo buttons state
+    const undoTop = document.getElementById('btn-undo-top');
+    const undoPad = document.getElementById('btn-undo-pad');
+    if (state.can_undo) {
+        if (undoTop) undoTop.style.opacity = '1';
+        if (undoPad) undoPad.style.opacity = '1';
+    } else {
+        if (undoTop) undoTop.style.opacity = '0.5';
+        if (undoPad) undoPad.style.opacity = '0.5';
+    }
+
     if (state.trigger_walkup && document.getElementById('auto-walkup-toggle').checked) {
         playCurrentWalkup();
     }
 }
 
-// Client-Side In-Memory Engine for Offline Fallback
-function applyActionLocally(action, extra) {
-    const s = { ...gameState };
-    const isTop = s.inning_half === 'top';
-    const battingTeamKey = isTop ? 'team2' : 'team1';
-    let triggerWalkup = false;
-
-    if (action === 'run_plus') {
-        const target = extra.team === 'team1' ? 'team1_score' : 'team2_score';
-        s[target] += 1;
-    } else if (action === 'run_minus') {
-        const target = extra.team === 'team1' ? 'team1_score' : 'team2_score';
-        s[target] = Math.max(0, s[target] - 1);
-    } else if (action === 'toggle_base') {
-        if (extra.base === '1B') s.runner_on_first = !s.runner_on_first;
-        if (extra.base === '2B') s.runner_on_second = !s.runner_on_second;
-        if (extra.base === '3B') s.runner_on_third = !s.runner_on_third;
-    } else if (action === 'single') {
-        s[`${battingTeamKey}_hits`] += 1;
-        if (s.runner_on_third) {
-            s[`${battingTeamKey}_score`] += 1;
-            s.runner_on_third = false;
-        }
-        if (s.runner_on_second) {
-            s.runner_on_third = true;
-            s.runner_on_second = false;
-        }
-        if (s.runner_on_first) s.runner_on_second = true;
-        s.runner_on_first = true;
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    } else if (action === 'walk') {
-        if (s.runner_on_first && s.runner_on_second && s.runner_on_third) {
-            s[`${battingTeamKey}_score`] += 1;
-        } else if (s.runner_on_first && s.runner_on_second) {
-            s.runner_on_third = true;
-        } else if (s.runner_on_first) {
-            s.runner_on_second = true;
-        }
-        s.runner_on_first = true;
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    } else if (action === 'homerun') {
-        s[`${battingTeamKey}_hits`] += 1;
-        const runs = 1 + int(s.runner_on_first) + int(s.runner_on_second) + int(s.runner_on_third);
-        s[`${battingTeamKey}_score`] += runs;
-        s.runner_on_first = false;
-        s.runner_on_second = false;
-        s.runner_on_third = false;
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    } else if (action === 'out') {
-        s.outs += 1;
-        if (s.outs >= 3) {
-            s.outs = 0;
-            s.runner_on_first = false;
-            s.runner_on_second = false;
-            s.runner_on_third = false;
-            if (s.inning_half === 'top') {
-                s.inning_half = 'bottom';
-                s.inning_half_display = 'Bottom';
-                s.batting_team_name = s.team1_name;
-            } else {
-                s.inning_half = 'top';
-                s.inning_half_display = 'Top';
-                s.current_inning += 1;
-                s.batting_team_name = s.team2_name;
-            }
-        }
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    } else if (action === 'next_batter') {
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    } else if (action === 'flip_half') {
-        s.outs = 0;
-        s.runner_on_first = false;
-        s.runner_on_second = false;
-        s.runner_on_third = false;
-        if (s.inning_half === 'top') {
-            s.inning_half = 'bottom';
-            s.inning_half_display = 'Bottom';
-            s.batting_team_name = s.team1_name;
-        } else {
-            s.inning_half = 'top';
-            s.inning_half_display = 'Top';
-            s.current_inning += 1;
-            s.batting_team_name = s.team2_name;
-        }
-        advanceBatterLocally(s);
-        triggerWalkup = true;
-    }
-
-    s.trigger_walkup = triggerWalkup;
-    return s;
-}
-
-function int(val) { return val ? 1 : 0; }
-
-function advanceBatterLocally(s) {
-    const isTop = s.inning_half === 'top';
-    const lineup = (isTop ? s.team2_lineup : s.team1_lineup) || [];
-    const present = lineup.filter(p => p.is_present);
-    if (!present.length) return;
-
-    if (s.on_deck_batter) {
-        s.current_batter = s.on_deck_batter;
-    } else if (present.length > 0) {
-        s.current_batter = {
-            id: present[0].player_id,
-            name: present[0].name,
-            jersey_number: present[0].jersey,
-            walkup_song_title: present[0].walkup_title || '',
-            walkup_song_url: '',
-            walkup_duration_seconds: 12,
-        };
-    }
-}
-
-async function sendAction(action, extra = {}) {
-    const payload = { action, ...extra, timestamp: new Date().toISOString() };
+// Client-Side Action Dispatcher
+async function sendAction(action, extraPayload = {}) {
+    const payload = { action, ...extraPayload };
 
     if (!navigator.onLine) {
-        const queue = getOfflineQueue();
-        queue.push(payload);
-        saveOfflineQueue(queue);
-
-        const localUpdated = applyActionLocally(action, extra);
-        renderState(localUpdated);
+        pushOfflineQueue(payload);
         return;
     }
 
@@ -797,73 +1211,60 @@ async function sendAction(action, extra = {}) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF_TOKEN,
+                'X-CSRFToken': CSRF_TOKEN
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(payload)
         });
+
+        if (res.status === 423) {
+            const data = await res.json();
+            document.getElementById('scorer-lock-banner').style.display = 'flex';
+            document.getElementById('active-scorer-msg').innerHTML =
+                `Scores are currently being recorded by <strong>${data.active_scorer}</strong>. You are in view-only spectator mode.`;
+            return;
+        }
 
         if (res.ok) {
             const data = await res.json();
             renderState(data);
-            flushOfflineQueue();
-        } else if (res.status === 423) {
-            const errData = await res.json();
-            alert(errData.error || "Scoring is currently locked by another scorekeeper.");
-            const banner = document.getElementById('scorer-lock-banner');
-            if (banner) {
-                banner.style.display = 'flex';
-                const msg = document.getElementById('active-scorer-msg');
-                if (msg && errData.active_scorer) {
-                    msg.innerHTML = `Scores and plays are currently being recorded by <strong>${errData.active_scorer}</strong>. You are in view-only spectator mode.`;
-                }
-            }
-            return;
         } else {
-            throw new Error('Server returned error status');
+            pushOfflineQueue(payload);
         }
-    } catch (err) {
-        // Network failure / sudden cell dropout
-        const queue = getOfflineQueue();
-        queue.push(payload);
-        saveOfflineQueue(queue);
-
-        const localUpdated = applyActionLocally(action, extra);
-        renderState(localUpdated);
-        updateConnectionBadge();
+    } catch (e) {
+        pushOfflineQueue(payload);
     }
 }
 
 async function flushOfflineQueue() {
-    if (isSyncing || !navigator.onLine) return;
     const queue = getOfflineQueue();
-    if (!queue.length) return;
+    if (!queue.length || !navigator.onLine) return;
 
-    isSyncing = true;
     try {
         const res = await fetch(SYNC_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF_TOKEN,
+                'X-CSRFToken': CSRF_TOKEN
             },
-            body: JSON.stringify({ actions: queue }),
+            body: JSON.stringify({ actions: queue })
         });
-
         if (res.ok) {
-            const syncedState = await res.json();
-            localStorage.removeItem(QUEUE_STORAGE_KEY);
-            updateQueueIndicator();
-            renderState(syncedState);
+            const data = await res.json();
+            clearOfflineQueue();
+            renderState(data);
         }
-    } catch (e) {
-    } finally {
-        isSyncing = false;
-    }
+    } catch (e) {}
 }
 
-renderState(gameState);
-updateConnectionBadge();
-updateQueueIndicator();
-precacheGameForOffline();
+// Initial Boot
+document.addEventListener('DOMContentLoaded', () => {
+    updateConnectionBadge();
+    updateQueueIndicator();
+    const savedMode = localStorage.getItem(MODE_STORAGE_KEY) || 'detailed';
+    setConsoleMode(savedMode);
+
+    // Initial state fetch
+    sendAction('toggle_attendance', {noop: true});
+});
 </script>
 {% endblock %}

@@ -2351,3 +2351,297 @@ class ChurchSportsLeaguesTestSuite(TestCase):
         eligible, reason = minor.is_eligible_to_play(self.league)
         self.assertTrue(eligible)
         self.assertEqual(reason, "Eligible")
+
+    def test_scorekeeper_undo_stack(self):
+        """Verifies the 10-state undo stack correctly rolls back plays, runners, and scores."""
+        self.client.force_login(self.admin_user)
+        g = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now(),
+            location="Field A",
+            status="in_progress",
+            current_inning=1,
+            inning_half="top",
+            outs=0,
+            team1_score=0,
+            team2_score=0
+        )
+        g.ensure_lineups_initialized()
+        url = reverse('dugout_action', args=[g.id])
+
+        # 1. Action: Single (Hit + runner on 1B)
+        resp = self.client.post(url, json.dumps({'action': 'single'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['runner_on_first'])
+        self.assertTrue(data['can_undo'])
+
+        # 2. Action: Home run (Score +2, runners cleared)
+        resp = self.client.post(url, json.dumps({'action': 'homerun'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['team2_score'], 2)
+        self.assertFalse(data['runner_on_first'])
+
+        # 3. Action: Out (+1 out)
+        resp = self.client.post(url, json.dumps({'action': 'out'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['outs'], 1)
+
+        # 4. UNDO 1: Reverts Out (outs back to 0, score remains 2)
+        resp = self.client.post(url, json.dumps({'action': 'undo'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['outs'], 0)
+        self.assertEqual(data['team2_score'], 2)
+
+        # 5. UNDO 2: Reverts Home Run (score back to 0, runner on 1B restored!)
+        resp = self.client.post(url, json.dumps({'action': 'undo'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['team2_score'], 0)
+        self.assertTrue(data['runner_on_first'])
+
+        # 6. UNDO 3: Reverts Single (runner on 1B cleared, back to clean inning!)
+        resp = self.client.post(url, json.dumps({'action': 'undo'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data['runner_on_first'])
+        self.assertEqual(data['team2_hits'], 0)
+
+    def test_diamond_expanded_actions_and_runner_advancement(self):
+        """Verifies 2B, 3B, Sac Fly, Fielder's Choice, Errors, Base Runner movement, and Multi-Out plays."""
+        self.client.force_login(self.admin_user)
+        self.league.sport = 'softball'
+        self.league.save()
+        g = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now(),
+            location="Diamond #1",
+            status="in_progress",
+            current_inning=1,
+            inning_half="top"
+        )
+        g.ensure_lineups_initialized()
+        url = reverse('dugout_action', args=[g.id])
+
+        # 1. Double (2B): Batter on 2B
+        resp = self.client.post(url, json.dumps({'action': 'double'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['runner_on_second'])
+        self.assertEqual(data['team2_hits'], 1)
+
+        # 2. Advance Runner: Move runner from 2B to 3B
+        resp = self.client.post(url, json.dumps({'action': 'advance_runner', 'from_base': '2B', 'to_base': '3B'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data['runner_on_second'])
+        self.assertTrue(data['runner_on_third'])
+
+        # 3. Sacrifice Fly: Out recorded, runner from 3B scores (+1 run)
+        resp = self.client.post(url, json.dumps({'action': 'sacrifice_fly'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['outs'], 1)
+        self.assertEqual(data['team2_score'], 1)
+        self.assertFalse(data['runner_on_third'])
+
+        # 4. Reached on Error (E): Safe at 1B, but NO official hit credited!
+        resp = self.client.post(url, json.dumps({'action': 'reached_on_error'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['runner_on_first'])
+        self.assertEqual(data['team2_hits'], 1)  # Hits did NOT increase!
+
+        # 5. Fielder's Choice (FC): Lead runner out, batter safe at 1B
+        resp = self.client.post(url, json.dumps({'action': 'fielders_choice'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['outs'], 2)
+        self.assertTrue(data['runner_on_first'])
+
+        # 6. Strikeout: Looking (ꓘ) records 3rd out -> auto switches half inning!
+        resp = self.client.post(url, json.dumps({'action': 'strikeout', 'style': 'looking'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['outs'], 0)  # Reset for bottom
+        self.assertEqual(data['inning_half'], 'bottom')
+
+    def test_inning_run_limit_and_mercy_rules(self):
+        """Verifies 5-run max inning enforcement and tiered mercy rule triggering."""
+        self.client.force_login(self.admin_user)
+        self.league.sport = 'softball'
+        self.league.inning_run_limit = 5
+        self.league.mercy_rule_tier1_runs = 20
+        self.league.mercy_rule_tier1_inning = 3
+        self.league.save()
+
+        g = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now(),
+            location="Diamond #2",
+            status="in_progress",
+            current_inning=1,
+            inning_half="top",
+            current_half_runs=0
+        )
+        g.ensure_lineups_initialized()
+        url = reverse('dugout_action', args=[g.id])
+
+        # Score 4 runs
+        self.client.post(url, json.dumps({'action': 'run_plus', 'team': 'team2', 'points': 4}), content_type='application/json')
+        g.refresh_from_db()
+        self.assertEqual(g.current_half_runs, 4)
+        self.assertEqual(g.inning_half, 'top')
+
+        # Score 1 more run -> 5-run limit reached! Auto-retires side and switches to bottom!
+        resp = self.client.post(url, json.dumps({'action': 'run_plus', 'team': 'team2', 'points': 1}), content_type='application/json')
+        data = resp.json()
+        self.assertEqual(data['inning_half'], 'bottom')
+        self.assertEqual(data['current_half_runs'], 0)
+
+        # Test Mercy Rule: Lead of 21 runs after 3 innings
+        g.current_inning = 3
+        g.team2_score = 25
+        g.team1_score = 4
+        g.save()
+        mercy = g.check_mercy_rule()
+        self.assertTrue(mercy['triggered'])
+        self.assertEqual(mercy['diff'], 21)
+
+        # Playoff game: when enforce_mercy_rule_in_playoffs is False, mercy is bypassed
+        g.game_type = 'playoff_final'
+        g.save()
+        self.league.enforce_mercy_rule_in_playoffs = False
+        self.league.save()
+        g.season.league = self.league
+        mercy_playoffs = g.check_mercy_rule()
+        self.assertFalse(mercy_playoffs['triggered'])
+
+    def test_count_tracker_and_courtesy_foul(self):
+        """Verifies 1-1 count start, ball/strike progression, and courtesy foul rule."""
+        self.client.force_login(self.admin_user)
+        self.league.sport = 'softball'
+        self.league.softball_count_1_1_start = True
+        self.league.allow_courtesy_foul = True
+        self.league.save()
+
+        g = Game.objects.create(
+            season=self.season,
+            team1=self.team1,
+            team2=self.team2,
+            date=timezone.now(),
+            location="Diamond #3",
+            status="in_progress"
+        )
+        g.ensure_lineups_initialized()
+        g.reset_batter_count()
+        g.save()
+        self.assertEqual(g.balls, 1)
+        self.assertEqual(g.strikes, 1)
+        url = reverse('dugout_action', args=[g.id])
+
+        # 1. Foul ball with 1 strike -> strikes become 2
+        self.client.post(url, json.dumps({'action': 'count_foul'}), content_type='application/json')
+        g.refresh_from_db()
+        self.assertEqual(g.strikes, 2)
+        self.assertFalse(g.courtesy_foul_used)
+
+        # 2. Foul ball with 2 strikes -> COURTESY FOUL USED (safe, still at bat)
+        resp = self.client.post(url, json.dumps({'action': 'count_foul'}), content_type='application/json')
+        data = resp.json()
+        self.assertTrue(data['courtesy_foul_used'])
+        self.assertEqual(data['outs'], 0)
+
+        # 3. Subsequent foul ball with 2 strikes -> STRIKE 3 OUT!
+        resp = self.client.post(url, json.dumps({'action': 'count_foul'}), content_type='application/json')
+        data = resp.json()
+        self.assertEqual(data['outs'], 1)
+
+    def test_basketball_fouls_and_volleyball_sets(self):
+        """Verifies Basketball team fouls bonus levels and Volleyball set progression."""
+        self.client.force_login(self.admin_user)
+        # Basketball
+        self.league.sport = 'basketball'
+        self.league.save()
+        gb = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Gym Court 1", status="in_progress"
+        )
+        url_b = reverse('dugout_action', args=[gb.id])
+
+        # 6 team fouls -> no bonus
+        for _ in range(6):
+            self.client.post(url_b, json.dumps({'action': 'team_foul', 'team': 'team1'}), content_type='application/json')
+        gb.refresh_from_db()
+        self.assertEqual(gb.team1_fouls, 6)
+
+        # 7th team foul -> BONUS 1-and-1 active!
+        resp = self.client.post(url_b, json.dumps({'action': 'team_foul', 'team': 'team1'}), content_type='application/json')
+        data = resp.json()
+        self.assertTrue(data['team1_bonus'])
+        self.assertFalse(data['team1_double_bonus'])
+
+        # 10th team foul -> DOUBLE BONUS active!
+        for _ in range(3):
+            resp = self.client.post(url_b, json.dumps({'action': 'team_foul', 'team': 'team1'}), content_type='application/json')
+        data = resp.json()
+        self.assertTrue(data['team1_double_bonus'])
+
+        # Volleyball Set progression
+        self.league.sport = 'volleyball'
+        self.league.volleyball_set_cap = 27
+        self.league.save()
+        gv = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Volleyball Court", status="in_progress",
+            team1_score=24, team2_score=20, current_set=1
+        )
+        url_v = reverse('dugout_action', args=[gv.id])
+        resp_v = self.client.post(url_v, json.dumps({'action': 'volleyball_point', 'team': 'team1'}), content_type='application/json')
+        data_v = resp_v.json()
+        self.assertEqual(data_v['current_set'], 2)  # Set 1 won! Advanced to Set 2
+        self.assertEqual(len(data_v['volleyball_sets']), 1)
+        self.assertEqual(data_v['volleyball_sets'][0]['team1_score'], 25)
+
+    def test_forfeit_and_rule_protest_logging(self):
+        """Verifies 1-tap forfeit recording and rule protest audit trail snapshots."""
+        self.client.force_login(self.admin_user)
+        self.league.sport = 'softball'
+        self.league.save()
+        g = Game.objects.create(
+            season=self.season, team1=self.team1, team2=self.team2,
+            date=timezone.now(), location="Diamond #4", status="in_progress"
+        )
+        url = reverse('dugout_action', args=[g.id])
+
+        # 1. Rule Protest
+        resp_protest = self.client.post(url, json.dumps({
+            'action': 'flag_dispute',
+            'notes': 'Coach protested infield fly rule on runner leaving 1B'
+        }), content_type='application/json')
+        self.assertEqual(resp_protest.status_code, 200)
+        g.refresh_from_db()
+        self.assertTrue(any(e.get('action') == 'rule_protest' for e in g.score_audit_log))
+
+        # 2. Forfeit: Award forfeit to Team 1
+        resp_forfeit = self.client.post(url, json.dumps({
+            'action': 'record_forfeit',
+            'winner_id': self.team1.id,
+            'notes': 'Opponent did not have enough players by 15 mins after start'
+        }), content_type='application/json')
+        self.assertEqual(resp_forfeit.status_code, 200)
+        g.refresh_from_db()
+        self.assertTrue(g.is_forfeit)
+        self.assertEqual(g.forfeit_winner, self.team1)
+        self.assertEqual(g.status, 'completed')
+        self.assertEqual(g.team1_score, 7)  # Standard softball forfeit score
+        self.assertEqual(g.team2_score, 0)

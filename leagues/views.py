@@ -903,6 +903,35 @@ def _serialize_game_state(game: Game):
         'enable_timeout_clock': game.season.league.enable_timeout_clock if game.season and game.season.league else True,
         'clock_seconds_remaining': game.clock_seconds_remaining,
         'clock_running': game.clock_running,
+        'balls': game.balls,
+        'strikes': game.strikes,
+        'courtesy_foul_used': game.courtesy_foul_used,
+        'can_undo': bool(len(game.play_by_play_snapshots or []) > 0),
+        'team1_fouls': game.team1_fouls,
+        'team2_fouls': game.team2_fouls,
+        'team1_bonus': bool(game.team1_fouls >= 7),
+        'team1_double_bonus': bool(game.team1_fouls >= 10),
+        'team2_bonus': bool(game.team2_fouls >= 7),
+        'team2_double_bonus': bool(game.team2_fouls >= 10),
+        'team1_timeouts_remaining': game.team1_timeouts_remaining,
+        'team2_timeouts_remaining': game.team2_timeouts_remaining,
+        'current_set': game.current_set,
+        'volleyball_sets': game.volleyball_sets or [],
+        'volleyball_serving_team_id': game.volleyball_serving_team_id,
+        'volleyball_set_cap': game.season.league.volleyball_set_cap if game.season and game.season.league else 27,
+        'volleyball_tiebreak_cap': game.season.league.volleyball_tiebreak_cap if game.season and game.season.league else 17,
+        'foul_out_limit': game.season.league.foul_out_limit if game.season and game.season.league else 5,
+        'inning_run_limit': game.season.league.inning_run_limit if game.season and game.season.league else None,
+        'current_half_runs': game.current_half_runs,
+        'mercy_rule_alert': game.check_mercy_rule(),
+        'enable_time_limit_alert': game.season.league.enable_time_limit_alert if game.season and game.season.league else False,
+        'game_time_limit_minutes': game.season.league.game_time_limit_minutes if game.season and game.season.league else 55,
+        'no_new_inning_minutes': game.season.league.no_new_inning_minutes if game.season and game.season.league else 50,
+        'softball_count_1_1_start': game.season.league.softball_count_1_1_start if game.season and game.season.league else True,
+        'allow_courtesy_foul': game.season.league.allow_courtesy_foul if game.season and game.season.league else True,
+        'enable_international_tiebreaker': game.season.league.enable_international_tiebreaker if game.season and game.season.league else False,
+        'is_forfeit': game.is_forfeit,
+        'forfeit_winner_name': game.forfeit_winner.name if game.forfeit_winner else None,
     }
 
 
@@ -1001,6 +1030,20 @@ def dugout_action(request, game_id):
     # Refresh lock on valid action
     game.acquire_scorer_lock(request.user)
 
+    if action == 'undo':
+        success = game.pop_snapshot()
+        if success:
+            game.log_score_event(request.user, 'undo_play', f"Undone last action by {request.user.display_name}")
+            game.save()
+        state = _serialize_game_state(game)
+        state['trigger_walkup'] = False
+        state['is_locked'] = False
+        state['undone'] = success
+        return JsonResponse(state)
+
+    # Save state snapshot BEFORE mutating action
+    game.push_snapshot()
+
     if action == 'mark_final':
         game.submit_score(request.user)
         game.log_play(f"FINAL SCORE: {game.team1.name} {game.team1_score}, {game.team2.name} {game.team2_score}")
@@ -1013,6 +1056,65 @@ def dugout_action(request, game_id):
     state['trigger_walkup'] = trigger_walkup
     state['is_locked'] = False
     return JsonResponse(state)
+
+
+def _check_inning_run_limit(game, runs_added):
+    """Checks if batting team reached the inning run limit and auto-retires side if met."""
+    if not runs_added:
+        return False
+    game.current_half_runs += runs_added
+    league = game.season.league if (game.season and game.season.league) else None
+    if not league or not league.inning_run_limit:
+        return False
+    if league.unlimited_runs_final_inning and game.current_inning >= 7:
+        return False
+    if game.current_half_runs >= league.inning_run_limit:
+        _handle_side_retired(game, reason=f"Inning run limit of {league.inning_run_limit} runs reached")
+        return True
+    return False
+
+
+def _handle_side_retired(game, reason="3 outs recorded"):
+    """Switches half inning, clears base runners, resets outs, and advances batter."""
+    game.outs = 0
+    game.current_half_runs = 0
+    game.runner_on_first = False
+    game.runner_on_second = False
+    game.runner_on_third = False
+    if game.inning_half == 'top':
+        game.inning_half = 'bottom'
+        game.log_play(f"Side retired ({reason})! Switching to Bottom of Inning {game.current_inning} ({game.team1.name} batting).")
+    else:
+        game.inning_half = 'top'
+        game.current_inning += 1
+        game.log_play(f"Side retired ({reason})! Switching to Top of Inning {game.current_inning} ({game.team2.name} batting).")
+    game.advance_to_next_batter()
+
+
+def _apply_walk_outcome(game, batter, batting_team, batter_name):
+    """Handles bases loaded walk or runner advances on base on balls."""
+    runs_scored = 0
+    if game.runner_on_first and game.runner_on_second and game.runner_on_third:
+        runs_scored = 1
+    elif game.runner_on_first and game.runner_on_second:
+        game.runner_on_third = True
+    elif game.runner_on_first:
+        game.runner_on_second = True
+    game.runner_on_first = True
+
+    if runs_scored:
+        if batting_team == game.team1:
+            game.team1_score += 1
+        else:
+            game.team2_score += 1
+        _increment_player_stat(batter, game, batting_team, 'Runs Batted In', 1)
+        game.log_play(f"{batter_name} walks with bases loaded! (+1 run scores).")
+    else:
+        game.log_play(f"{batter_name} reaches first base (Walk / BB).")
+
+    side_retired = _check_inning_run_limit(game, runs_scored)
+    if not side_retired:
+        game.advance_to_next_batter()
 
 
 def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
@@ -1059,26 +1161,78 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
         else:
             game.log_play(f"{batter_name} hits a single (runner on 1B).")
 
-        game.advance_to_next_batter()
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            game.advance_to_next_batter()
         trigger_walkup = True
 
-    elif action == 'walk':
+    elif action == 'double':
+        if batting_team == game.team1:
+            game.team1_hits += 1
+        else:
+            game.team2_hits += 1
+        _increment_player_stat(batter, game, batting_team, 'Hits', 1)
+
         runs_scored = 0
-        if game.runner_on_first and game.runner_on_second and game.runner_on_third:
-            runs_scored = 1
-        elif game.runner_on_first and game.runner_on_second:
+        if game.runner_on_third:
+            runs_scored += 1
+            game.runner_on_third = False
+        if game.runner_on_second:
+            runs_scored += 1
+            game.runner_on_second = False
+        runner_on_first_to_third = False
+        if game.runner_on_first:
+            runner_on_first_to_third = True
+            game.runner_on_first = False
+
+        game.runner_on_second = True
+        if runner_on_first_to_third:
             game.runner_on_third = True
-        elif game.runner_on_first:
-            game.runner_on_second = True
-        game.runner_on_first = True
 
         if runs_scored:
             if batting_team == game.team1:
-                game.team1_score += 1
+                game.team1_score += runs_scored
             else:
-                game.team2_score += 1
-        game.log_play(f"{batter_name} reaches first base (Walk).")
-        game.advance_to_next_batter()
+                game.team2_score += runs_scored
+            _increment_player_stat(batter, game, batting_team, 'Runs Batted In', runs_scored)
+            game.log_play(f"{batter_name} doubles! ({runs_scored} run(s) scored)")
+        else:
+            game.log_play(f"{batter_name} hits a double (runner on 2B).")
+
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'triple':
+        if batting_team == game.team1:
+            game.team1_hits += 1
+        else:
+            game.team2_hits += 1
+        _increment_player_stat(batter, game, batting_team, 'Hits', 1)
+
+        runs_scored = int(game.runner_on_first) + int(game.runner_on_second) + int(game.runner_on_third)
+        game.runner_on_first = False
+        game.runner_on_second = False
+        game.runner_on_third = True
+
+        if runs_scored:
+            if batting_team == game.team1:
+                game.team1_score += runs_scored
+            else:
+                game.team2_score += runs_scored
+            _increment_player_stat(batter, game, batting_team, 'Runs Batted In', runs_scored)
+            game.log_play(f"{batter_name} triples! ({runs_scored} run(s) scored)")
+        else:
+            game.log_play(f"{batter_name} hits a triple (runner on 3B).")
+
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'walk':
+        _apply_walk_outcome(game, batter, batting_team, batter_name)
         trigger_walkup = True
 
     elif action == 'homerun':
@@ -1101,29 +1255,185 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
         _increment_player_stat(batter, game, batting_team, 'Runs Scored', 1)
 
         game.log_play(f"HOME RUN by {batter_name}! ({runs_scored} R scored)")
-        game.advance_to_next_batter()
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            game.advance_to_next_batter()
         trigger_walkup = True
 
     elif action == 'out':
         game.outs += 1
         if game.outs >= 3:
-            game.outs = 0
-            game.runner_on_first = False
-            game.runner_on_second = False
-            game.runner_on_third = False
-            if game.inning_half == 'top':
-                game.inning_half = 'bottom'
-                game.log_play(f"3rd out! Switching to Bottom of Inning {game.current_inning} ({game.team1.name} batting).")
-            else:
-                game.inning_half = 'top'
-                game.current_inning += 1
-                game.log_play(f"3rd out! Switching to Top of Inning {game.current_inning} ({game.team2.name} batting).")
-            game.advance_to_next_batter()
-            trigger_walkup = True
+            _handle_side_retired(game, reason="3 outs recorded")
         else:
             game.log_play(f"{batter_name} recorded out ({game.outs} out).")
             game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action in ('sacrifice_fly', 'rbi_groundout'):
+        game.outs += 1
+        runs_scored = 0
+        if game.runner_on_third:
+            runs_scored = 1
+            game.runner_on_third = False
+            if batting_team == game.team1:
+                game.team1_score += 1
+            else:
+                game.team2_score += 1
+            _increment_player_stat(batter, game, batting_team, 'Runs Batted In', 1)
+
+        act_label = "Sacrifice Fly" if action == 'sacrifice_fly' else "RBI Groundout"
+        if runs_scored:
+            game.log_play(f"{batter_name} hits {act_label}. Run scores! ({game.outs} out)")
+        else:
+            game.log_play(f"{batter_name} recorded out ({game.outs} out).")
+
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            if game.outs >= 3:
+                _handle_side_retired(game, reason="3 outs recorded")
+            else:
+                game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'fielders_choice':
+        game.outs += 1
+        if game.runner_on_third:
+            game.runner_on_third = False
+        elif game.runner_on_second:
+            game.runner_on_second = False
+        elif game.runner_on_first:
+            game.runner_on_first = False
+        game.runner_on_first = True
+
+        game.log_play(f"{batter_name} reaches on Fielder's Choice (out on basepaths, {game.outs} out).")
+        if game.outs >= 3:
+            _handle_side_retired(game, reason="3 outs recorded")
+        else:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'strikeout':
+        game.outs += 1
+        style = payload.get('style', 'swinging')
+        style_label = "swinging (K)" if style == 'swinging' else "looking (ꓘ)"
+        game.log_play(f"{batter_name} strikes out {style_label} ({game.outs} out).")
+        if game.outs >= 3:
+            _handle_side_retired(game, reason="3 outs recorded")
+        else:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'reached_on_error':
+        runs_scored = 0
+        if game.runner_on_third:
+            runs_scored += 1
+            game.runner_on_third = False
+        if game.runner_on_second:
+            game.runner_on_third = True
+            game.runner_on_second = False
+        if game.runner_on_first:
+            game.runner_on_second = True
+        game.runner_on_first = True
+
+        if runs_scored:
+            if batting_team == game.team1:
+                game.team1_score += runs_scored
+            else:
+                game.team2_score += runs_scored
+            game.log_play(f"{batter_name} reaches on Error (E)! ({runs_scored} run(s) scored)")
+        else:
+            game.log_play(f"{batter_name} reaches on Error (E).")
+
+        side_retired = _check_inning_run_limit(game, runs_scored)
+        if not side_retired:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'advance_runner':
+        from_base = payload.get('from_base')
+        to_base = payload.get('to_base')
+        if from_base == '1B': game.runner_on_first = False
+        elif from_base == '2B': game.runner_on_second = False
+        elif from_base == '3B': game.runner_on_third = False
+
+        if to_base == 'home':
+            if batting_team == game.team1:
+                game.team1_score += 1
+            else:
+                game.team2_score += 1
+            game.log_play(f"Runner advances home and scores (+1 run for {batting_team.name})!")
+            _check_inning_run_limit(game, 1)
+        elif to_base == 'out':
+            game.outs += 1
+            game.log_play(f"Runner put out on basepath from {from_base} ({game.outs} out).")
+            if game.outs >= 3:
+                _handle_side_retired(game, reason="3 outs recorded")
+        elif to_base == '2B':
+            game.runner_on_second = True
+            game.log_play("Runner advanced to 2B.")
+        elif to_base == '3B':
+            game.runner_on_third = True
+            game.log_play("Runner advanced to 3B.")
+
+    elif action in ('double_play', 'triple_play'):
+        outs_added = 2 if action == 'double_play' else 3
+        game.outs += outs_added
+        label = "DOUBLE PLAY (DP)" if action == 'double_play' else "TRIPLE PLAY (TP)"
+        game.log_play(f"Defensive {label}! ({game.outs} out).")
+        if game.outs >= 3:
+            _handle_side_retired(game, reason=f"{label} recorded")
+        else:
+            game.advance_to_next_batter()
+        trigger_walkup = True
+
+    elif action == 'count_ball':
+        game.balls += 1
+        if game.balls >= 4:
+            _apply_walk_outcome(game, batter, batting_team, batter_name)
             trigger_walkup = True
+        else:
+            game.log_play(f"Ball {game.balls} to {batter_name} (Count: {game.balls}-{game.strikes}).")
+
+    elif action == 'count_strike':
+        game.strikes += 1
+        if game.strikes >= 3:
+            game.outs += 1
+            game.log_play(f"{batter_name} strikes out on Strike 3 ({game.outs} out).")
+            if game.outs >= 3:
+                _handle_side_retired(game, reason="3 outs recorded")
+            else:
+                game.advance_to_next_batter()
+            trigger_walkup = True
+        else:
+            game.log_play(f"Strike {game.strikes} on {batter_name} (Count: {game.balls}-{game.strikes}).")
+
+    elif action == 'count_foul':
+        league = game.season.league if (game.season and game.season.league) else None
+        allow_courtesy = league.allow_courtesy_foul if league else True
+        if game.strikes < 2:
+            game.strikes += 1
+            game.log_play(f"Foul ball by {batter_name} (Count: {game.balls}-{game.strikes}).")
+        elif game.strikes >= 2:
+            if allow_courtesy and not game.courtesy_foul_used:
+                game.courtesy_foul_used = True
+                game.log_play(f"Foul ball by {batter_name} (Courtesy Foul used).")
+            else:
+                game.outs += 1
+                game.log_play(f"Foul ball with 2 strikes — Strike 3! {batter_name} out ({game.outs} out).")
+                if game.outs >= 3:
+                    _handle_side_retired(game, reason="3 outs recorded")
+                else:
+                    game.advance_to_next_batter()
+                trigger_walkup = True
+
+    elif action == 'reset_count':
+        game.reset_batter_count()
+        game.log_play(f"Count reset to {game.balls}-{game.strikes} for {batter_name}.")
+
+    elif action == 'international_tiebreaker':
+        game.runner_on_second = True
+        game.outs = 0
+        game.log_play(f"International Tiebreaker: Runner placed on 2B for {batting_team.name} with 0 outs.")
 
     elif action == 'run_plus':
         team_target = payload.get('team', 'batting')
@@ -1132,9 +1442,13 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
         if team_target == 'team1' or (team_target == 'batting' and batting_team == game.team1):
             game.team1_score += points
             game.log_play(f"+{points} {label} for {game.team1.name} ({game.team1_score}-{game.team2_score}).")
+            if game.season and game.season.league and game.season.league.is_diamond_sport:
+                _check_inning_run_limit(game, points)
         else:
             game.team2_score += points
             game.log_play(f"+{points} {label} for {game.team2.name} ({game.team1_score}-{game.team2_score}).")
+            if game.season and game.season.league and game.season.league.is_diamond_sport:
+                _check_inning_run_limit(game, points)
 
     elif action == 'run_minus':
         team_target = payload.get('team', 'batting')
@@ -1155,6 +1469,7 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
 
     elif action == 'flip_half':
         game.outs = 0
+        game.current_half_runs = 0
         game.runner_on_first = False
         game.runner_on_second = False
         game.runner_on_third = False
@@ -1174,11 +1489,117 @@ def _apply_dugout_action_internal(game: Game, action: str, payload: dict):
             game.clock_running = bool(payload['running'])
             game.clock_last_started_at = timezone.now() if game.clock_running else None
 
+    elif action == 'team_foul':
+        target_team_code = payload.get('team', 'team1')
+        if target_team_code == 'team1':
+            game.team1_fouls += 1
+            foul_count = game.team1_fouls
+            t_name = game.team1.name
+        else:
+            game.team2_fouls += 1
+            foul_count = game.team2_fouls
+            t_name = game.team2.name
+
+        bonus_str = ""
+        if foul_count == 7:
+            bonus_str = " (BONUS 1-and-1 Active!)"
+        elif foul_count >= 10:
+            bonus_str = " (DOUBLE BONUS 2-Shots Active!)"
+        game.log_play(f"Team foul on {t_name} (Foul #{foul_count}){bonus_str}.")
+
+    elif action == 'reset_fouls_half':
+        game.team1_fouls = 0
+        game.team2_fouls = 0
+        game.log_play("Team fouls reset for new period/half.")
+
+    elif action == 'use_timeout':
+        target_team_code = payload.get('team', 'team1')
+        if target_team_code == 'team1':
+            game.team1_timeouts_remaining = max(0, game.team1_timeouts_remaining - 1)
+            rem = game.team1_timeouts_remaining
+            t_name = game.team1.name
+        else:
+            game.team2_timeouts_remaining = max(0, game.team2_timeouts_remaining - 1)
+            rem = game.team2_timeouts_remaining
+            t_name = game.team2.name
+        game.log_play(f"Timeout called by {t_name} ({rem} remaining).")
+
+    elif action == 'player_foul':
+        player_id = payload.get('player_id')
+        player = get_user_model().objects.filter(id=player_id).first()
+        if player:
+            _increment_player_stat(player, game, batting_team, 'Fouls', 1)
+            stat = PlayerGameStat.objects.filter(player=player, game=game, category='Fouls').first()
+            foul_val = stat.value if stat else 1
+            limit = game.season.league.foul_out_limit if (game.season and game.season.league) else 5
+            jersey = f"#{player.jersey_number} " if player.jersey_number else ""
+            if foul_val >= limit:
+                game.log_play(f"⚠️ [FOUL OUT] {jersey}{player.display_name} committed foul #{foul_val} and is disqualified!")
+            else:
+                game.log_play(f"Personal foul on {jersey}{player.display_name} (Foul #{foul_val}).")
+
+    elif action == 'volleyball_point':
+        target_team_code = payload.get('team', 'team1')
+        if target_team_code == 'team1':
+            game.team1_score += 1
+            t_name = game.team1.name
+            t_score = game.team1_score
+            opp_score = game.team2_score
+        else:
+            game.team2_score += 1
+            t_name = game.team2.name
+            t_score = game.team2_score
+            opp_score = game.team1_score
+
+        league = game.season.league if (game.season and game.season.league) else None
+        target_pts = 15 if game.current_set >= 3 else 25
+        cap = (league.volleyball_tiebreak_cap if game.current_set >= 3 else league.volleyball_set_cap) if league else (17 if game.current_set >= 3 else 27)
+
+        is_set_win = (t_score >= target_pts and (t_score - opp_score) >= 2) or (cap and t_score >= cap)
+        if is_set_win:
+            winner_team = game.team1 if target_team_code == 'team1' else game.team2
+            v_sets = list(game.volleyball_sets or [])
+            v_sets.append({
+                'set': game.current_set,
+                'team1_score': game.team1_score,
+                'team2_score': game.team2_score,
+                'winner': winner_team.name,
+                'winner_id': winner_team.id,
+            })
+            game.volleyball_sets = v_sets
+            game.log_play(f"🏐 SET {game.current_set} FINAL: {winner_team.name} wins set {game.team1_score}-{game.team2_score}!")
+            game.current_set += 1
+            game.team1_score = 0
+            game.team2_score = 0
+        else:
+            game.log_play(f"Point for {t_name} (Set {game.current_set}: {game.team1_score}-{game.team2_score}).")
+
+    elif action == 'switch_serve':
+        if game.volleyball_serving_team_id == game.team1_id:
+            game.volleyball_serving_team = game.team2
+        else:
+            game.volleyball_serving_team = game.team1
+        game.log_play(f"Service to {game.volleyball_serving_team.name}.")
+
+    elif action == 'flag_dispute':
+        notes = payload.get('notes', 'Rule interpretation disputed by coach')
+        game.log_score_event(
+            game.active_scorer or None,
+            'rule_protest',
+            f"Rule Protest: {notes} | Inn/Period {game.current_inning} ({game.inning_half}), Score {game.team1_score}-{game.team2_score}"
+        )
+        game.log_play(f"⚖️ [RULE PROTEST] {notes}")
+
+    elif action == 'record_forfeit':
+        winner_id = payload.get('winner_id')
+        winner_team = game.team1 if str(winner_id) == str(game.team1_id) else game.team2
+        notes = payload.get('notes', 'Official forfeit recorded by scorekeeper')
+        game.record_forfeit(winning_team=winner_team, recording_user=game.active_scorer, notes=notes)
+
     elif action == 'mark_final':
         game.status = 'completed'
         game.log_play(f"FINAL SCORE: {game.team1.name} {game.team1_score}, {game.team2.name} {game.team2_score}")
 
-        # Dispatch Discord Webhook for Game Final
         webhook = (game.season.discord_webhook_url if game.season else '') or (game.season.league.discord_webhook_url if game.season and game.season.league else '')
         if webhook:
             winner_str = f"Winner: {game.winner.name}" if game.winner else "Result: Tie"

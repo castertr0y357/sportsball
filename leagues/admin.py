@@ -7,9 +7,26 @@ from .models import (
 
 @admin.register(League)
 class LeagueAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sport', 'admin', 'allow_emergency_subs', 'allow_minors', 'sportsmanship_good_threshold', 'created_at')
+    list_display = ('name', 'sport', 'admin', 'inning_run_limit', 'softball_count_1_1_start', 'allow_emergency_subs', 'allow_minors', 'created_at')
     search_fields = ('name', 'admin__username')
     list_filter = ('sport', 'allow_emergency_subs', 'allow_minors', 'created_at')
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'sport', 'description', 'rules', 'admin', 'master_officials_pool', 'discord_webhook_url')
+        }),
+        ('Clock & Time Limits', {
+            'fields': ('enable_game_clock', 'default_period_minutes', 'enable_time_limit_clock', 'enable_timeout_clock', 'enable_time_limit_alert', 'game_time_limit_minutes', 'no_new_inning_minutes')
+        }),
+        ('Softball & Baseball Engine Rules', {
+            'fields': ('inning_run_limit', 'unlimited_runs_final_inning', 'softball_count_1_1_start', 'allow_courtesy_foul', 'enable_international_tiebreaker', 'enforce_mercy_rule_in_playoffs', 'mercy_rule_tier1_runs', 'mercy_rule_tier1_inning', 'mercy_rule_tier2_runs', 'mercy_rule_tier2_inning', 'mercy_rule_tier3_runs', 'mercy_rule_tier3_inning')
+        }),
+        ('Court Sport Rules (Basketball & Volleyball)', {
+            'fields': ('basketball_stop_clock_margin', 'foul_out_limit', 'volleyball_set_cap', 'volleyball_tiebreak_cap')
+        }),
+        ('Policies & Sportsmanship', {
+            'fields': ('allow_emergency_subs', 'allow_minors', 'sportsmanship_good_threshold', 'sportsmanship_review_threshold')
+        }),
+    )
 
 
 @admin.register(Season)

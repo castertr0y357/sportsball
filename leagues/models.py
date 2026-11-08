@@ -64,6 +64,85 @@ class League(models.Model):
         max_digits=3, decimal_places=2, default=3.00,
         help_text="Scores between review and good threshold require committee review before re-invitation."
     )
+    
+    # Sport & Rule Engine Presets
+    inning_run_limit = models.PositiveIntegerField(
+        null=True, blank=True, default=5,
+        help_text="Max runs per half-inning before automatic side retirement (e.g. 5). Leave blank for unlimited."
+    )
+    unlimited_runs_final_inning = models.BooleanField(
+        default=True,
+        help_text="Allow unlimited runs in final scheduled regulation inning (e.g. 7th inning)."
+    )
+    mercy_rule_tier1_runs = models.PositiveIntegerField(
+        null=True, blank=True, default=20,
+        help_text="Run lead for tier 1 mercy rule (e.g. 20 runs)."
+    )
+    mercy_rule_tier1_inning = models.PositiveIntegerField(
+        null=True, blank=True, default=3,
+        help_text="Inning after which tier 1 mercy rule applies (e.g. 3rd inning)."
+    )
+    mercy_rule_tier2_runs = models.PositiveIntegerField(
+        null=True, blank=True, default=15,
+        help_text="Run lead for tier 2 mercy rule (e.g. 15 runs)."
+    )
+    mercy_rule_tier2_inning = models.PositiveIntegerField(
+        null=True, blank=True, default=4,
+        help_text="Inning after which tier 2 mercy rule applies (e.g. 4th inning)."
+    )
+    mercy_rule_tier3_runs = models.PositiveIntegerField(
+        null=True, blank=True, default=10,
+        help_text="Run lead for tier 3 mercy rule (e.g. 10 runs)."
+    )
+    mercy_rule_tier3_inning = models.PositiveIntegerField(
+        null=True, blank=True, default=5,
+        help_text="Inning after which tier 3 mercy rule applies (e.g. 5th inning)."
+    )
+    enforce_mercy_rule_in_playoffs = models.BooleanField(
+        default=False,
+        help_text="Enforce mercy rules in playoff games (defaults to False so championships play out)."
+    )
+    softball_count_1_1_start = models.BooleanField(
+        default=True,
+        help_text="Batters start each plate appearance with 1 Ball and 1 Strike (church slowpitch standard)."
+    )
+    allow_courtesy_foul = models.BooleanField(
+        default=True,
+        help_text="Batters receive 1 courtesy waste foul on 2 strikes before strike 3 is called."
+    )
+    enable_international_tiebreaker = models.BooleanField(
+        default=False,
+        help_text="In extra innings, start half-innings with last out placed on 2nd base."
+    )
+    enable_time_limit_alert = models.BooleanField(
+        default=False,
+        help_text="Display warning when time limit is reached."
+    )
+    game_time_limit_minutes = models.PositiveIntegerField(
+        default=55, null=True, blank=True,
+        help_text="Scheduled game length in minutes."
+    )
+    no_new_inning_minutes = models.PositiveIntegerField(
+        default=50, null=True, blank=True,
+        help_text="Minutes mark after which no new inning may begin."
+    )
+    basketball_stop_clock_margin = models.PositiveIntegerField(
+        default=10, null=True, blank=True,
+        help_text="Point margin threshold to convert running clock to stop clock in final 2 minutes."
+    )
+    foul_out_limit = models.PositiveIntegerField(
+        default=5,
+        help_text="Personal fouls limit before player disqualification."
+    )
+    volleyball_set_cap = models.PositiveIntegerField(
+        default=27, null=True, blank=True,
+        help_text="Maximum hard score cap on standard 25-point set."
+    )
+    volleyball_tiebreak_cap = models.PositiveIntegerField(
+        default=17, null=True, blank=True,
+        help_text="Maximum hard score cap on deciding 15-point set."
+    )
+
     admin = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -535,6 +614,44 @@ class Game(models.Model):
     score_dispute_notes = models.TextField(blank=True, help_text="Notes from coach or commissioner if score was disputed")
     score_audit_log = models.JSONField(default=list, blank=True, help_text="Audit log of score changes, submissions, and confirmations")
 
+    
+    # Count, Pitching & Ball/Strike State (Diamond Sports)
+    current_half_runs = models.PositiveIntegerField(default=0)
+
+    balls = models.PositiveIntegerField(default=0)
+    strikes = models.PositiveIntegerField(default=0)
+    courtesy_foul_used = models.BooleanField(default=False)
+
+    # Undo Stack (Last 10 Game State Snapshots)
+    play_by_play_snapshots = models.JSONField(default=list, blank=True)
+
+    # Court Sports: Basketball Fouls & Timeouts
+    team1_fouls = models.PositiveIntegerField(default=0)
+    team2_fouls = models.PositiveIntegerField(default=0)
+    team1_timeouts_remaining = models.PositiveIntegerField(default=3)
+    team2_timeouts_remaining = models.PositiveIntegerField(default=3)
+
+    # Court Sports: Volleyball Sets & Serving
+    volleyball_sets = models.JSONField(default=list, blank=True)
+    current_set = models.PositiveIntegerField(default=1)
+    volleyball_serving_team = models.ForeignKey(
+        'Team',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='games_currently_serving'
+    )
+
+    # Official Forfeits
+    is_forfeit = models.BooleanField(default=False)
+    forfeit_winner = models.ForeignKey(
+        'Team',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='games_won_by_forfeit'
+    )
+
     class Meta:
         ordering = ['date', 'id']
 
@@ -587,6 +704,141 @@ class Game(models.Model):
             .order_by('batting_order', 'id')
         )
 
+    
+    def push_snapshot(self):
+        """Save a snapshot of current game state into play_by_play_snapshots (max 10)."""
+        snapshot = {
+            'team1_score': self.team1_score,
+            'team2_score': self.team2_score,
+            'team1_hits': self.team1_hits,
+            'team2_hits': self.team2_hits,
+            'outs': self.outs,
+            'runner_on_first': self.runner_on_first,
+            'runner_on_second': self.runner_on_second,
+            'runner_on_third': self.runner_on_third,
+            'current_half_runs': self.current_half_runs,
+
+            'balls': self.balls,
+            'strikes': self.strikes,
+            'courtesy_foul_used': self.courtesy_foul_used,
+            'current_inning': self.current_inning,
+            'inning_half': self.inning_half,
+            'team1_batter_index': self.team1_batter_index,
+            'team2_batter_index': self.team2_batter_index,
+            'current_batter_id': self.current_batter_id,
+            'clock_seconds_remaining': self.clock_seconds_remaining,
+            'clock_running': self.clock_running,
+            'team1_fouls': self.team1_fouls,
+            'team2_fouls': self.team2_fouls,
+            'team1_timeouts_remaining': self.team1_timeouts_remaining,
+            'team2_timeouts_remaining': self.team2_timeouts_remaining,
+            'current_set': self.current_set,
+            'volleyball_sets': list(self.volleyball_sets or []),
+            'status': self.status,
+            'play_log_count': len(self.play_by_play or []),
+        }
+        snapshots = list(self.play_by_play_snapshots or [])
+        snapshots.append(snapshot)
+        if len(snapshots) > 10:
+            snapshots = snapshots[-10:]
+        self.play_by_play_snapshots = snapshots
+
+    def pop_snapshot(self):
+        """Restore previous snapshot and remove corresponding play log entry. Returns True if restored."""
+        snapshots = list(self.play_by_play_snapshots or [])
+        if not snapshots:
+            return False
+        snap = snapshots.pop()
+        self.team1_score = snap.get('team1_score', self.team1_score)
+        self.team2_score = snap.get('team2_score', self.team2_score)
+        self.team1_hits = snap.get('team1_hits', self.team1_hits)
+        self.team2_hits = snap.get('team2_hits', self.team2_hits)
+        self.outs = snap.get('outs', self.outs)
+        self.runner_on_first = snap.get('runner_on_first', self.runner_on_first)
+        self.runner_on_second = snap.get('runner_on_second', self.runner_on_second)
+        self.runner_on_third = snap.get('runner_on_third', self.runner_on_third)
+        self.current_half_runs = snap.get('current_half_runs', self.current_half_runs)
+
+        self.balls = snap.get('balls', self.balls)
+        self.strikes = snap.get('strikes', self.strikes)
+        self.courtesy_foul_used = snap.get('courtesy_foul_used', self.courtesy_foul_used)
+        self.current_inning = snap.get('current_inning', self.current_inning)
+        self.inning_half = snap.get('inning_half', self.inning_half)
+        self.team1_batter_index = snap.get('team1_batter_index', self.team1_batter_index)
+        self.team2_batter_index = snap.get('team2_batter_index', self.team2_batter_index)
+        self.current_batter_id = snap.get('current_batter_id', self.current_batter_id)
+        self.clock_seconds_remaining = snap.get('clock_seconds_remaining', self.clock_seconds_remaining)
+        self.clock_running = snap.get('clock_running', self.clock_running)
+        self.team1_fouls = snap.get('team1_fouls', self.team1_fouls)
+        self.team2_fouls = snap.get('team2_fouls', self.team2_fouls)
+        self.team1_timeouts_remaining = snap.get('team1_timeouts_remaining', self.team1_timeouts_remaining)
+        self.team2_timeouts_remaining = snap.get('team2_timeouts_remaining', self.team2_timeouts_remaining)
+        self.current_set = snap.get('current_set', self.current_set)
+        self.volleyball_sets = snap.get('volleyball_sets', self.volleyball_sets)
+        self.status = snap.get('status', self.status)
+
+        prev_log_count = snap.get('play_log_count', len(self.play_by_play or []))
+        current_logs = list(self.play_by_play or [])
+        if len(current_logs) > prev_log_count:
+            self.play_by_play = current_logs[:prev_log_count]
+
+        self.play_by_play_snapshots = snapshots
+        return True
+
+    def reset_batter_count(self):
+        """Resets balls, strikes, and courtesy foul according to league rules."""
+        if self.season and self.season.league and self.season.league.softball_count_1_1_start:
+            self.balls = 1
+            self.strikes = 1
+        else:
+            self.balls = 0
+            self.strikes = 0
+        self.courtesy_foul_used = False
+
+    def check_mercy_rule(self):
+        """Returns dict with 'triggered': True/False, 'diff': int, 'leading_team': Team, 'message': str if satisfied."""
+        if not self.season or not self.season.league:
+            return {'triggered': False}
+        league = self.season.league
+
+        if self.game_type != 'regular' and not league.enforce_mercy_rule_in_playoffs:
+            return {'triggered': False}
+
+        diff = abs(self.team1_score - self.team2_score)
+        if diff == 0:
+            return {'triggered': False}
+        leading_team = self.team1 if self.team1_score > self.team2_score else self.team2
+
+        if league.mercy_rule_tier1_runs and league.mercy_rule_tier1_inning:
+            if self.current_inning >= league.mercy_rule_tier1_inning and diff >= league.mercy_rule_tier1_runs:
+                return {
+                    'triggered': True,
+                    'diff': diff,
+                    'leading_team': leading_team,
+                    'tier': 1,
+                    'message': f"Mercy Rule Triggered: {leading_team.name} leads by {diff} runs after {self.current_inning} innings (Threshold: {league.mercy_rule_tier1_runs} runs after {league.mercy_rule_tier1_inning} inn)."
+                }
+        if league.mercy_rule_tier2_runs and league.mercy_rule_tier2_inning:
+            if self.current_inning >= league.mercy_rule_tier2_inning and diff >= league.mercy_rule_tier2_runs:
+                return {
+                    'triggered': True,
+                    'diff': diff,
+                    'leading_team': leading_team,
+                    'tier': 2,
+                    'message': f"Mercy Rule Triggered: {leading_team.name} leads by {diff} runs after {self.current_inning} innings (Threshold: {league.mercy_rule_tier2_runs} runs after {league.mercy_rule_tier2_inning} inn)."
+                }
+        if league.mercy_rule_tier3_runs and league.mercy_rule_tier3_inning:
+            if self.current_inning >= league.mercy_rule_tier3_inning and diff >= league.mercy_rule_tier3_runs:
+                return {
+                    'triggered': True,
+                    'diff': diff,
+                    'leading_team': leading_team,
+                    'tier': 3,
+                    'message': f"Mercy Rule Triggered: {leading_team.name} leads by {diff} runs after {self.current_inning} innings (Threshold: {league.mercy_rule_tier3_runs} runs after {league.mercy_rule_tier3_inning} inn)."
+                }
+        return {'triggered': False}
+
+
     def advance_to_next_batter(self):
         """
         Advance the batting team's pointer to the next present player in the batting order,
@@ -608,6 +860,9 @@ class Game(models.Model):
             self.team2_batter_index = (idx + 1) % len(active_entries)
 
         self.current_batter = next_entry.player
+
+        self.reset_batter_count()
+
         return self.current_batter
 
     def peek_on_deck_batter(self):
@@ -789,43 +1044,93 @@ class Game(models.Model):
             count += 1
         return count
 
-    def record_forfeit(self, forfeiting_team, recording_user):
+    def record_forfeit(self, forfeiting_team=None, recording_user=None, winning_team=None, notes=""):
+
         """Standardizes 1-tap forfeit scoring and finalization by sport."""
+
+        if winning_team and not forfeiting_team:
+
+            forfeiting_team = self.team2 if (winning_team.id if hasattr(winning_team, 'id') else winning_team) == self.team1_id else self.team1
+
+        elif forfeiting_team and not winning_team:
+
+            winning_team = self.team2 if (forfeiting_team.id if hasattr(forfeiting_team, 'id') else forfeiting_team) == self.team1_id else self.team1
+
+
+
         sport = (self.season.league.sport if self.season and self.season.league else '').lower()
+
         scores_by_sport = {
+
             'softball': 7,
+
             'baseball': 7,
+
             'basketball': 15,
+
             'soccer': 2,
+
             'volleyball': 2,
+
             'flag_football': 14,
+
         }
+
         win_score = scores_by_sport.get(sport, 1)
 
+
+
         if forfeiting_team == self.team1:
+
             self.team1_score = 0
+
             self.team2_score = win_score
+
             non_forfeiting_name = self.team2.name
+
         else:
+
             self.team1_score = win_score
+
             self.team2_score = 0
+
             non_forfeiting_name = self.team1.name
 
+
+
+        self.is_forfeit = True
+
+        self.forfeit_winner = winning_team
+
         self.status = 'completed'
+
         self.score_confirmed = True
+
         self.score_confirmed_by = recording_user
+
         self.score_submitted_by = recording_user
+
         self.score_submitted_at = timezone.now()
+
+        if notes:
+
+            self.notes = f"{self.notes}\n[FORFEIT] {notes}".strip()
+
+        user_name = recording_user.display_name if recording_user else "Scorekeeper"
+
         self.log_score_event(
+
             recording_user,
+
             'forfeit_recorded',
-            f"Forfeit recorded by {recording_user.display_name}. {forfeiting_team.name} forfeited to {non_forfeiting_name} ({self.team1_score}-{self.team2_score})."
+
+            f"Forfeit recorded by {user_name}. {forfeiting_team.name if forfeiting_team else 'Opponent'} forfeited to {non_forfeiting_name} ({self.team1_score}-{self.team2_score})."
+
         )
-        self.save(update_fields=[
-            'team1_score', 'team2_score', 'status',
-            'score_confirmed', 'score_confirmed_by',
-            'score_submitted_by', 'score_submitted_at', 'score_audit_log'
-        ])
+
+        self.log_play(f"[FORFEIT] {non_forfeiting_name} awarded forfeit victory ({self.team1_score}-{self.team2_score}).")
+
+        self.save()
 
     def get_player_rsvp(self, player):
         if not player or not player.is_authenticated:
