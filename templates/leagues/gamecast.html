@@ -1,66 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Live GameCast | {{ game.team2.name }} at {{ game.team1.name }}{% endblock %}
 
 {% block content %}
-<style>
-  .gamecast-board {
-    background: #0f172a;
-    color: #fff;
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
-    align-items: center;
-  }
-  .gc-team {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #1e293b;
-    padding: 0.9rem 1.1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 0.65rem;
-  }
-  .gc-score {
-    font-size: 2.4rem;
-    font-weight: 800;
-    color: #fbbf24;
-  }
-  .gc-diamond {
-    position: relative;
-    width: 150px;
-    height: 150px;
-    margin: 0.5rem auto;
-  }
-  .gc-base {
-    position: absolute;
-    width: 40px;
-    height: 40px;
-    transform: rotate(45deg);
-    border: 2px solid #64748b;
-    background: #1e293b;
-    border-radius: 4px;
-  }
-  .gc-base.occupied {
-    background: #f59e0b;
-    border-color: #fde68a;
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.85);
-  }
-  .gc-2b { top: 8px; left: 55px; }
-  .gc-3b { top: 55px; left: 8px; }
-  .gc-1b { top: 55px; right: 8px; }
-  .gc-home {
-    position: absolute;
-    bottom: 8px;
-    left: 57px;
-    width: 36px;
-    height: 36px;
-    background: #e2e8f0;
-    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
-  }
-</style>
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/pages/gamecast.css' %}">
+{% endblock %}
 
 <div class="page-header">
     <div>

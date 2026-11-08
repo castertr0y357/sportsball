@@ -1,0 +1,232 @@
+  /* Base Dugout Scoreboard */
+  .console-scoreboard {
+    background: #0f172a;
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    align-items: center;
+  }
+  .score-team-box {
+    background: #1e293b;
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .score-big {
+    font-size: 2.3rem;
+    font-weight: 800;
+    color: #fbbf24;
+  }
+  .diamond-wrap {
+    position: relative;
+    width: 170px;
+    height: 170px;
+    margin: 0.75rem auto;
+  }
+  .base-btn {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    transform: rotate(45deg);
+    border: 2px solid #94a3b8;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+  }
+  .base-btn span {
+    transform: rotate(-45deg);
+    font-size: 0.8rem;
+  }
+  .base-btn.occupied {
+    background: #f59e0b;
+    border-color: #fde68a;
+    color: #0f172a;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.85);
+  }
+  .base-2b { top: 8px; left: 61px; }
+  .base-3b { top: 61px; left: 8px; }
+  .base-1b { top: 61px; right: 8px; }
+  .base-home {
+    position: absolute;
+    bottom: 8px;
+    left: 65px;
+    width: 40px;
+    height: 40px;
+    background: #e2e8f0;
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  }
+  .action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 0.65rem;
+  }
+  .action-btn {
+    padding: 0.85rem 0.65rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    border-radius: 0.55rem;
+    border: none;
+    cursor: pointer;
+    text-align: center;
+    color: #fff;
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  .action-btn:active {
+    transform: scale(0.97);
+  }
+  .btn-next-batter { background: #2563eb; grid-column: span 2; font-size: 1.1rem; }
+  .btn-hit { background: #16a34a; }
+  .btn-double { background: #059669; }
+  .btn-triple { background: #0d9488; }
+  .btn-walk { background: #0284c7; }
+  .btn-hr { background: #d97706; }
+  .btn-out { background: #dc2626; }
+  .btn-sac { background: #7c3aed; }
+  .btn-fc { background: #4f46e5; }
+  .btn-k { background: #991b1b; }
+  .btn-err { background: #64748b; }
+  .btn-dp { background: #b91c1c; }
+  .btn-tiebreaker { background: #854d0e; }
+
+  /* Count display box */
+  .count-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #1e293b;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    font-size: 0.95rem;
+  }
+  .count-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 2px solid #64748b;
+    background: transparent;
+  }
+  .count-dot.filled-ball {
+    background: #38bdf8;
+    border-color: #7dd3fc;
+    box-shadow: 0 0 6px rgba(56, 189, 248, 0.7);
+  }
+  .count-dot.filled-strike {
+    background: #ef4444;
+    border-color: #fca5a5;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+  }
+
+  /* Simple Mode Giant Controls */
+  .simple-mode-wrap {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .btn-giant {
+    padding: 1.4rem 1rem;
+    font-size: 1.25rem;
+    font-weight: 800;
+    border-radius: 8px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+  }
+
+  /* Basketball & Volleyball styles */
+  .bonus-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-block;
+  }
+  .bonus-active { background: #f59e0b; color: #000; animation: pulse 1.5s infinite; }
+  .double-bonus-active { background: #ef4444; color: #fff; animation: pulse 1s infinite; }
+
+  /* Bleacher / Direct Sunlight Mode (Ultra-High Contrast) */
+  body.bleacher-mode {
+    background: #000000 !important;
+    color: #ffffff !important;
+  }
+  body.bleacher-mode .card,
+  body.bleacher-mode .console-scoreboard,
+  body.bleacher-mode .score-team-box {
+    background: #000000 !important;
+    border: 3px solid #fbbf24 !important;
+    color: #ffffff !important;
+  }
+  body.bleacher-mode .action-btn,
+  body.bleacher-mode .btn {
+    border: 2px solid #ffffff !important;
+    font-weight: 900 !important;
+  }
+
+  .lineup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .lineup-row.absent {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+  .lineup-row.at-bat {
+    background: #dbeafe;
+    font-weight: 700;
+    border-left: 4px solid var(--primary);
+  }
+  .offline-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+  }
+
+  /* Segmented Mode Control */
+  .mode-switch-group {
+    display: inline-flex;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .mode-switch-btn {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mode-switch-btn.active {
+    background: var(--primary, #2563eb);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }

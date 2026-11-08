@@ -1,13 +1,17 @@
+"""
+In-app test user sandbox portal and instant role-switching views.
+All views are implemented as Class-Based Views.
+"""
+
+from __future__ import annotations
 from django.core.management import call_command
 from django.contrib import messages
 from django.contrib.auth import login
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
-from django.conf import settings
+from django.shortcuts import render, redirect
 from django.db.models import Q
+from django.views.generic import View
 from users.models import CustomUser
 from core.models import Church
-
 
 TEST_ROLES_CATALOG = [
     {
@@ -69,70 +73,72 @@ TEST_ROLES_CATALOG = [
 ]
 
 
-def test_users_portal(request):
-    """
-    In-App Test User Portal:
-    - View, create, and 1-click switch between test accounts without terminal commands.
-    - All test accounts login with email addresses and password 'sportsball123'.
-    """
-    required_emails = [r['email'] for r in TEST_ROLES_CATALOG]
-    existing_count = CustomUser.objects.filter(
-        Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
-    ).count()
+class TestUsersPortalView(View):
+    """In-App Test User Portal: View, create, and 1-click switch between test accounts."""
 
-    # Auto-seed all test accounts if ANY are missing
-    if existing_count < len(TEST_ROLES_CATALOG):
-        try:
-            call_command('create_test_users')
-        except Exception:
-            pass
+    def get(self, request):
+        required_emails = [r['email'] for r in TEST_ROLES_CATALOG]
+        existing_count = CustomUser.objects.filter(
+            Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
+        ).count()
 
-    test_users = CustomUser.objects.filter(
-        Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
-    ).select_related('church')
+        if existing_count < len(TEST_ROLES_CATALOG):
+            try:
+                call_command('create_test_users')
+            except Exception:
+                pass
 
-    users_by_email = {u.email.lower(): u for u in test_users}
-    users_by_uname = {u.username.lower(): u for u in test_users}
+        test_users = CustomUser.objects.filter(
+            Q(email__in=required_emails) | Q(username__in=[r['username'] for r in TEST_ROLES_CATALOG])
+        ).select_related('church')
 
-    catalog = []
-    for item in TEST_ROLES_CATALOG:
-        user_obj = users_by_email.get(item['email'].lower()) or users_by_uname.get(item['username'].lower())
-        catalog.append({
-            **item,
-            'user': user_obj,
-            'exists': user_obj is not None,
+        users_by_email = {u.email.lower(): u for u in test_users}
+        users_by_uname = {u.username.lower(): u for u in test_users}
+
+        catalog = []
+        for item in TEST_ROLES_CATALOG:
+            user_obj = users_by_email.get(item['email'].lower()) or users_by_uname.get(item['username'].lower())
+            catalog.append({
+                **item,
+                'user': user_obj,
+                'exists': user_obj is not None,
+            })
+
+        churches = Church.objects.all()
+        return render(request, 'core/test_users_portal.html', {
+            'catalog': catalog,
+            'churches': churches,
+            'roles': CustomUser.ROLE_CHOICES,
         })
 
-    churches = Church.objects.all()
 
-    return render(request, 'core/test_users_portal.html', {
-        'catalog': catalog,
-        'churches': churches,
-        'roles': CustomUser.ROLE_CHOICES,
-    })
+class QuickSwitchTestUserView(View):
+    """Instantly switches active authenticated session to targeted test account."""
 
+    def get(self, request, username: str):
+        return self._do_switch(request, username)
 
-def quick_switch_test_user(request, username):
-    """1-Click switch login session to any test user from the web UI."""
-    if request.method != 'POST':
-        return redirect('test_users_portal')
+    def post(self, request, username: str):
+        return self._do_switch(request, username)
 
-    user = CustomUser.objects.filter(
-        Q(username__iexact=username) | Q(email__iexact=username)
-    ).first()
+    def _do_switch(self, request, username: str):
+        user = CustomUser.objects.filter(
+            Q(username__iexact=username) | Q(email__iexact=username)
+        ).first()
 
-    if not user:
-        messages.error(request, f"User '{username}' not found.")
-        return redirect('test_users_portal')
+        if not user:
+            messages.error(request, f"User '{username}' not found.")
+            return redirect('test_users_portal')
 
-    login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
-    messages.success(request, f"⚡ Switched active session to {user.display_name} ({user.get_role_display()})!")
-    return redirect('home')
+        login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
+        messages.success(request, f"⚡ Switched active session to {user.display_name} ({user.get_role_display()})!")
+        return redirect('home')
 
 
-def create_in_app_test_user(request):
-    """Create a new custom test user directly from the web browser without email confirmation."""
-    if request.method == 'POST':
+class CreateInAppTestUserView(View):
+    """Creates a custom role-specific user in the database without terminal commands."""
+
+    def post(self, request):
         email = request.POST.get('email', '').strip().lower()
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
@@ -172,28 +178,27 @@ def create_in_app_test_user(request):
         user.set_password(password or 'sportsball123')
         user.save()
 
-        # If church commissioner, assign them as commissioner of that church
         if role == 'church_admin' and church:
             church.commissioner = user
             church.save(update_fields=['commissioner'])
 
-        # Auto-login as the freshly created user if requested
         if request.POST.get('auto_login'):
             login(request, user, backend='users.backends.EmailOrUsernameModelBackend')
             messages.success(request, f"Created and logged in as {user.display_name}!")
             return redirect('home')
 
         messages.success(request, f"Test user '{user.email}' created successfully!")
-    return redirect('test_users_portal')
+        return redirect('test_users_portal')
 
 
-def reset_all_demo_data_in_app(request):
-    """1-Click button to re-seed demo data and test users on Kubernetes."""
-    if request.method == 'POST':
+class ResetAllDemoDataInAppView(View):
+    """Re-executes the create_test_users management command."""
+
+    def post(self, request):
         try:
             call_command('seed_demo_data')
             call_command('create_test_users')
             messages.success(request, "Demo churches, leagues, rosters, and test accounts re-seeded successfully!")
         except Exception as e:
             messages.error(request, f"Failed to seed demo data: {e}")
-    return redirect('test_users_portal')
+        return redirect('test_users_portal')
