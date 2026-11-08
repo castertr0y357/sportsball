@@ -12,7 +12,7 @@ on:
 
 jobs:
   test:
-    name: Run Django Checks & Unit Tests
+    name: Run Django Checks, Unit Tests & Playwright E2E
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -28,6 +28,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Install Playwright Chromium & System Dependencies
+        run: |
+          python -m playwright install --with-deps chromium
 
       - name: Run Django System Checks
         env:
@@ -48,7 +52,14 @@ jobs:
           DJANGO_SECRET_KEY: 'ci-secret-key-for-testing'
           DJANGO_DEBUG: 'True'
         run: |
-          python manage.py test
+          python manage.py test leagues users core
+
+      - name: Run Playwright End-to-End Browser Tests
+        env:
+          DJANGO_SECRET_KEY: 'ci-secret-key-for-testing'
+          DJANGO_DEBUG: 'True'
+        run: |
+          python manage.py test tests.e2e --noinput
 
   build-container:
     name: Build & Push Docker Image
