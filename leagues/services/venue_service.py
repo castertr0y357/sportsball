@@ -7,6 +7,7 @@ conflict resolution, and notification dispatching.
 from __future__ import annotations
 from datetime import date
 from typing import Optional
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from leagues.models import Game, LeagueVenue, League
@@ -33,6 +34,7 @@ def update_venue_condition(
         )
 
 
+@transaction.atomic
 def relocate_or_postpone_games(
     venue: LeagueVenue,
     action_type: str,

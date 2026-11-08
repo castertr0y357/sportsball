@@ -1,7 +1,7 @@
 """Game model storing match schedules, scores, live dugout states, clocks, and score audits."""
 from __future__ import annotations
 from datetime import timedelta
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -35,10 +35,10 @@ class Game(models.Model):
     venue = models.ForeignKey('LeagueVenue', on_delete=models.SET_NULL, null=True, blank=True, related_name='scheduled_games')
     team1 = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='games_as_team1', verbose_name="Home Team")
     team2 = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='games_as_team2', verbose_name="Away Team")
-    date = models.DateTimeField()
+    date = models.DateTimeField(db_index=True)
     location = models.CharField(max_length=200)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
-    game_type = models.CharField(max_length=20, choices=GAME_TYPE_CHOICES, default='regular')
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='scheduled', db_index=True)
+    game_type = models.CharField(max_length=20, choices=GAME_TYPE_CHOICES, default='regular', db_index=True)
     week_number = models.PositiveIntegerField(default=1)
     playoff_seed1 = models.PositiveIntegerField(null=True, blank=True)
     playoff_seed2 = models.PositiveIntegerField(null=True, blank=True)
@@ -147,6 +147,9 @@ class Game(models.Model):
 
     class Meta:
         ordering = ['date', 'id']
+        indexes = [
+            models.Index(fields=['season', 'status', 'date'], name='game_season_status_date_idx'),
+        ]
 
     def clean(self):
         if self.team1_id and self.team2_id and self.team1_id == self.team2_id:
@@ -525,11 +528,12 @@ class Game(models.Model):
     @classmethod
     def auto_finalize_stale_pending_games(cls, hours=48):
         """Auto-confirms games waiting on opponent confirmation past the review window."""
-        cutoff = timezone.now() - timezone.timedelta(hours=hours)
-        stale_games = cls.objects.filter(
-            status='pending_confirmation',
-            score_submitted_at__lte=cutoff
-        )
+        with transaction.atomic():
+            cutoff = timezone.now() - timezone.timedelta(hours=hours)
+            stale_games = cls.objects.select_for_update().filter(
+                status='pending_confirmation',
+                score_submitted_at__lte=cutoff
+            )
         count = 0
         for game in stale_games:
             game.status = 'completed'
@@ -539,6 +543,7 @@ class Game(models.Model):
             count += 1
         return count
 
+    @transaction.atomic
     def record_forfeit(self, forfeiting_team=None, recording_user=None, winning_team=None, notes=""):
 
         """Standardizes 1-tap forfeit scoring and finalization by sport."""

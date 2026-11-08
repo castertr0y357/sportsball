@@ -7,7 +7,9 @@ from datetime import date
 from typing import Any
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import connection
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -472,3 +474,26 @@ create_announcement = CreateAnnouncementView.as_view()
 join_church_by_invite = JoinChurchByInviteView.as_view()
 announcement_detail = AnnouncementDetailView.as_view()
 toggle_announcement_banner = ToggleAnnouncementBannerView.as_view()
+
+
+class HealthCheckView(View):
+    """Container and orchestration health probe verifying database connectivity."""
+
+    def get(self, request):
+        try:
+            connection.ensure_connection()
+            db_status = 'healthy'
+            http_status = 200
+        except Exception as e:
+            db_status = f'unhealthy: {str(e)}'
+            http_status = 503
+
+        data = {
+            'status': 'ok' if http_status == 200 else 'error',
+            'database': db_status,
+            'timestamp': timezone.now().isoformat(),
+        }
+        return JsonResponse(data, status=http_status)
+
+
+health_check = HealthCheckView.as_view()

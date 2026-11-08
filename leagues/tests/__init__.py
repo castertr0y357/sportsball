@@ -8,6 +8,7 @@ Aggregates all domain test suites:
 - test_venues_and_weather
 - test_discipline_and_conduct
 - test_general_views
+- test_production_hardening
 """
 
 from leagues.tests.test_scoring_and_dugout import TestScoringAndDugoutCase
@@ -17,6 +18,7 @@ from leagues.tests.test_officials_and_dues import TestOfficialsAndDuesCase
 from leagues.tests.test_venues_and_weather import TestVenuesAndWeatherCase
 from leagues.tests.test_discipline_and_conduct import TestDisciplineAndConductCase
 from leagues.tests.test_general_views import TestGeneralViewsCase
+from leagues.tests.test_production_hardening import TestProductionHardening
 
 __all__ = [
     'TestScoringAndDugoutCase',
@@ -26,4 +28,5 @@ __all__ = [
     'TestVenuesAndWeatherCase',
     'TestDisciplineAndConductCase',
     'TestGeneralViewsCase',
+    'TestProductionHardening',
 ]

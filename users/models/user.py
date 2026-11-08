@@ -1,7 +1,14 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
+
+
+def validate_audio_file_size(file):
+    max_mb = 8
+    if hasattr(file, 'size') and file.size and file.size > max_mb * 1024 * 1024:
+        raise ValidationError(f"Audio file size cannot exceed {max_mb} MB (uploaded {file.size / (1024 * 1024):.1f} MB).")
 
 
 class CustomUser(AbstractUser):
@@ -78,8 +85,11 @@ class CustomUser(AbstractUser):
         upload_to='walkup_songs/',
         blank=True,
         null=True,
-        validators=[FileExtensionValidator(allowed_extensions=['mp3', 'wav', 'm4a', 'ogg', 'aac'])],
-        help_text="Upload an audio file (MP3, WAV, M4A, OGG) for offline ballpark playback"
+        validators=[
+            FileExtensionValidator(allowed_extensions=['mp3', 'wav', 'm4a', 'ogg', 'aac']),
+            validate_audio_file_size,
+        ],
+        help_text="Upload an audio file (MP3, WAV, M4A, OGG, max 8MB) for offline ballpark playback"
     )
     walkup_start_seconds = models.PositiveIntegerField(
         default=0,

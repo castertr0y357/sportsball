@@ -8,6 +8,7 @@ import json
 from typing import Any
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.db.models import Max, Q
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -119,6 +120,7 @@ class RecordGameScoreView(LoginRequiredMixin, View):
     def get(self, request, game_id: int):
         return redirect('game_detail', game_id=game_id)
 
+    @transaction.atomic
     def post(self, request, game_id: int):
         game = get_object_or_404(Game.objects.select_related('season__league', 'team1__church', 'team2__church'), id=game_id)
         if not request.user.can_score_game(game):

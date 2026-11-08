@@ -8,6 +8,7 @@ import json
 from typing import Any
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import View, TemplateView
@@ -44,6 +45,7 @@ class DugoutConsoleView(ScorekeeperAccessMixin, View):
 class DugoutActionView(LoginRequiredMixin, JsonResponseMixin, View):
     """AJAX endpoint for 1-tap Dugout Console actions with 10-state undo stack."""
 
+    @transaction.atomic
     def post(self, request, game_id: int):
         game = get_object_or_404(
             Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter', 'active_scorer'),
@@ -116,6 +118,7 @@ class DugoutActionView(LoginRequiredMixin, JsonResponseMixin, View):
 class DugoutBatchSyncView(LoginRequiredMixin, JsonResponseMixin, View):
     """Flush and sync offline queued actions in chronological order."""
 
+    @transaction.atomic
     def post(self, request, game_id: int):
         game = get_object_or_404(
             Game.objects.select_related('season__league', 'team1__church', 'team2__church', 'current_batter'),
@@ -266,6 +269,7 @@ class PracticeSandboxView(LoginRequiredMixin, View):
 class TakeOverDugoutScoringView(LoginRequiredMixin, View):
     """Allows an authorized coach, referee, or commissioner to take over scoring lock."""
 
+    @transaction.atomic
     def post(self, request, game_id: int):
         return self._takeover(request, game_id)
 

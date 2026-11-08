@@ -7,10 +7,12 @@ semifinal seeding (e.g. 1 vs 4, 2 vs 3), consolation matches, and final advancem
 from __future__ import annotations
 from datetime import timedelta
 from typing import Any
+from django.db import transaction
 from django.utils import timezone
 from leagues.models import Game, Season, Team
 
 
+@transaction.atomic
 def generate_playoff_bracket(season: Season) -> tuple[bool, str]:
     """
     Generates playoff bracket games based on current regular season standings.
@@ -77,6 +79,7 @@ def generate_playoff_bracket(season: Season) -> tuple[bool, str]:
         return True, "Championship Final matchup generated (#1 vs #2)!"
 
 
+@transaction.atomic
 def advance_semifinals_to_final(season: Season) -> tuple[bool, str]:
     """
     Advances completed semifinals to Championship Final and 3rd Place Consolation match.

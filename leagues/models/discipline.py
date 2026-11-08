@@ -24,8 +24,8 @@ class PlayerDisciplinaryRecord(models.Model):
     team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='disciplinary_records')
     game = models.ForeignKey('Game', on_delete=models.SET_NULL, null=True, blank=True, related_name='disciplinary_incidents')
 
-    penalty_type = models.CharField(max_length=30, choices=PENALTY_TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    penalty_type = models.CharField(max_length=30, choices=PENALTY_TYPE_CHOICES, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
 
     games_suspended_total = models.PositiveIntegerField(default=0)
     games_served = models.PositiveIntegerField(default=0)

@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import ListView, DetailView, View
 from leagues.models import Team, Season, Game, SeasonRegistration, GameLineupEntry
 from leagues.forms import TeamForm
@@ -327,3 +328,38 @@ class TeamCalendarIcsView(View):
         response = HttpResponse(ics_body, content_type='text/calendar; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+class TeamSafetyRosterView(LoginRequiredMixin, View):
+    """
+    Printable 1-click Safety & Emergency Contact Roster for coaches, referees, and commissioners.
+    Displays emergency contact names, emergency contact phones, and waiver status.
+    """
+
+    def get(self, request, team_id: int):
+        team = get_object_or_404(
+            Team.objects.select_related('league', 'season', 'church', 'captain'),
+            id=team_id
+        )
+        is_captain = team.captain_id == request.user.id
+        is_commish = (
+            request.user.is_overall_commissioner
+            or request.user.can_manage_league(team.league)
+            or (team.church and request.user.can_manage_church(team.church))
+        )
+        is_official = getattr(request.user, 'role', '') == 'referee' or request.user.is_staff
+
+        if not (is_captain or is_commish or is_official):
+            messages.error(request, "Permission denied: Only team captains, league commissioners, or officials may access emergency rosters.")
+            return redirect('team_detail', team_id=team.id)
+
+        players = list(team.players.all().order_by('jersey_number', 'last_name', 'first_name'))
+
+        return render(request, 'leagues/team_safety_roster.html', {
+            'team': team,
+            'players': players,
+            'printed_at': timezone.now(),
+        })
+
+
+team_safety_roster = TeamSafetyRosterView.as_view()

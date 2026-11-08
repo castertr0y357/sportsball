@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'storages',
     # Local apps
     'core',
     'users',
@@ -46,6 +47,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.UserTimezoneMiddleware',
     'core.middleware.MaintenanceModeMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -162,14 +164,50 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-STORAGES = {
-    'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
-    },
-    'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
-    },
-}
+# Object Storage Configuration (S3 / Cloudflare R2 / MinIO with local disk fallback)
+MEDIA_BUCKET = os.environ.get('AWS_STORAGE_BUCKET_NAME') or os.environ.get('MEDIA_S3_BUCKET')
+if MEDIA_BUCKET:
+    s3_options = {
+        'bucket_name': MEDIA_BUCKET,
+        'location': os.environ.get('AWS_MEDIA_LOCATION', 'media'),
+        'file_overwrite': False,
+        'default_acl': None,
+        'querystring_auth': False,
+    }
+    endpoint_url = os.environ.get('AWS_S3_ENDPOINT_URL') or os.environ.get('MEDIA_S3_ENDPOINT_URL')
+    if endpoint_url:
+        s3_options['endpoint_url'] = endpoint_url
+    access_key = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('MEDIA_S3_ACCESS_KEY')
+    if access_key:
+        s3_options['access_key'] = access_key
+    secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('MEDIA_S3_SECRET_KEY')
+    if secret_key:
+        s3_options['secret_key'] = secret_key
+    region_name = os.environ.get('AWS_S3_REGION_NAME') or os.environ.get('MEDIA_S3_REGION', 'us-east-1')
+    if region_name:
+        s3_options['region_name'] = region_name
+
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': s3_options,
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
+    MEDIA_URL = f"https://{MEDIA_BUCKET}.s3.amazonaws.com/{s3_options['location']}/"
+    if endpoint_url:
+        MEDIA_URL = f"{endpoint_url.rstrip('/')}/{MEDIA_BUCKET}/{s3_options['location']}/"
+else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
 WHITENOISE_MANIFEST_STRICT = False
 
 # Email Configuration (Gmail SMTP with local Console fallback)
@@ -231,3 +269,17 @@ LOGGING = {
         },
     },
 }
+
+
+# Production Hardening & Security Guardrails
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB upload cap
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+if not DEBUG:
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    SESSION_COOKIE_HTTPONLY = True
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() in ('true', '1')
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() in ('true', '1')
+    CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False').lower() in ('true', '1')

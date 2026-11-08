@@ -30,6 +30,8 @@ from .public_views import (
     join_church_by_invite,
     announcement_detail,
     toggle_announcement_banner,
+    HealthCheckView,
+    health_check,
 )
 from .admin_views import (
     SystemAdminDashboardView,

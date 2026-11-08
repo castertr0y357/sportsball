@@ -45,6 +45,8 @@ from leagues.views.team_views import (
     JoinTeamByInviteView,
     ToggleTeamDuesView,
     TeamCalendarIcsView,
+    TeamSafetyRosterView,
+    team_safety_roster,
 )
 
 # Registration views

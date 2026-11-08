@@ -10,7 +10,7 @@ from django.db.models import Sum
 class Season(models.Model):
     league = models.ForeignKey('League', on_delete=models.CASCADE, related_name='seasons')
     name = models.CharField(max_length=100)
-    start_date = models.DateField()
+    start_date = models.DateField(db_index=True)
     end_date = models.DateField()
     current = models.BooleanField(default=False)
     registration_open = models.BooleanField(default=True)

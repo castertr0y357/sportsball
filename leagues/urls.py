@@ -30,6 +30,7 @@ from leagues.views import (
     JoinTeamByInviteView,
     ToggleTeamDuesView,
     TeamCalendarIcsView,
+    TeamSafetyRosterView,
     # Registration & Imports
     RegisterForSeasonView,
     AssignRegistrationView,
@@ -114,6 +115,7 @@ urlpatterns = [
     path('teams/join/<str:invite_code>/', JoinTeamByInviteView.as_view(), name='join_team_invite'),
     path('teams/<int:team_id>/toggle-dues/', ToggleTeamDuesView.as_view(), name='toggle_team_dues'),
     path('teams/<int:team_id>/calendar.ics', TeamCalendarIcsView.as_view(), name='team_calendar_ics'),
+    path('teams/<int:team_id>/safety-roster/', TeamSafetyRosterView.as_view(), name='team_safety_roster'),
 
     # -------------------------------------------------------------------------
     # 4. Player Registration & Team Imports

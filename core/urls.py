@@ -8,6 +8,7 @@ from core import views
 
 urlpatterns = [
     # Public & Fellowship Pages
+    path('healthz/', views.HealthCheckView.as_view(), name='healthz'),
     path('', views.HomeView.as_view(), name='home'),
     path('my-church/', views.MyChurchView.as_view(), name='my_church'),
     path('churches/', views.ChurchListView.as_view(), name='church_list'),

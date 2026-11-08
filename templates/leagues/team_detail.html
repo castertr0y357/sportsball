@@ -15,6 +15,9 @@
         <a href="{% url 'team_calendar_ics' team.id %}" class="btn btn-secondary" title="Subscribe to team games (.ics)">
             📅 Subscribe to Calendar (.ics)
         </a>
+        <a href="{% url 'team_safety_roster' team.id %}" class="btn btn-secondary" title="Printable Safety & Emergency Contact Sheet" target="_blank">
+            🩹 Safety &amp; Emergency Roster
+        </a>
         <a href="{% url 'team_list' team.season.id %}" class="btn btn-secondary">&larr; All Teams</a>
     </div>
 </div>

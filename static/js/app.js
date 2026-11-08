@@ -102,6 +102,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const timezoneSelect = document.getElementById('userTimezoneSelect');
     const timezonePreview = document.getElementById('timezonePreview');
 
+    function syncTimezoneCookie(tz) {
+        const actualTz = (tz === 'auto' || !tz) ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC') : tz;
+        document.cookie = 'sportsball_timezone=' + encodeURIComponent(actualTz) + ';path=/;max-age=31536000;SameSite=Lax';
+        return actualTz;
+    }
+
     function updateTimezonePreview(tz) {
         if (!timezonePreview) return;
         try {
@@ -113,22 +119,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 second: 'numeric',
                 timeZoneName: 'short'
             }).format(new Date());
-            timezonePreview.textContent = `Time: ${nowStr} (${actualTz})`;
+            timezonePreview.textContent = 'Time: ' + nowStr + ' (' + actualTz + ')';
         } catch(e) {
             timezonePreview.textContent = '';
         }
     }
 
+    const initialTz = localStorage.getItem('sportsball_timezone') || 'auto';
+    syncTimezoneCookie(initialTz);
+
     if (timezoneSelect) {
-        const savedTz = localStorage.getItem('sportsball_timezone') || 'auto';
-        timezoneSelect.value = savedTz;
-        updateTimezonePreview(savedTz);
+        timezoneSelect.value = initialTz;
+        updateTimezonePreview(initialTz);
 
         timezoneSelect.addEventListener('change', (e) => {
             const selected = e.target.value;
             try {
                 localStorage.setItem('sportsball_timezone', selected);
             } catch(err) {}
+            syncTimezoneCookie(selected);
             updateTimezonePreview(selected);
         });
     }

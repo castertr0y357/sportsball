@@ -34,5 +34,5 @@ ENV DJANGO_SETTINGS_MODULE=church_leagues.settings
 
 EXPOSE 8000
 
-# Entrypoint script starts gunicorn
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py bootstrap_admin && python manage.py seed_demo_data && python manage.py create_test_users && gunicorn church_leagues.wsgi:application --bind 0.0.0.0:$PORT --workers 3"]
+# Entrypoint script starts gunicorn (gates demo seeding behind SEED_DEMO_DATA=true)
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py bootstrap_admin && ([ \"$SEED_DEMO_DATA\" = \"true\" ] && python manage.py seed_demo_data && python manage.py create_test_users || true) && gunicorn church_leagues.wsgi:application --bind 0.0.0.0:$PORT --workers 3"]
