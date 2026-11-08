@@ -270,3 +270,67 @@ class ScheduleGeneratorForm(forms.Form):
         cleaned_data['parsed_blackout_dates'] = blackouts
 
         return cleaned_data
+
+class VenueRelocationForm(forms.Form):
+    action_type = forms.ChoiceField(
+        choices=[('relocate', 'Relocate to Alternate Venue'), ('postpone', 'Postpone All Games')],
+        initial='relocate'
+    )
+    new_venue_id = forms.IntegerField(required=False)
+    target_date = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
+    reason = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'e.g. Field flooded, maintenance'}))
+
+
+class DisciplinaryActionForm(forms.Form):
+    player_id = forms.IntegerField(required=True)
+    team_id = forms.IntegerField(required=False)
+    penalty_type = forms.ChoiceField(
+        choices=[
+            ('game_count', 'Game Count Suspension'),
+            ('date_bound', 'Date-Bound Suspension'),
+            ('permanent_expulsion', 'Permanent Expulsion'),
+        ],
+        initial='game_count'
+    )
+    games_suspended_total = forms.IntegerField(initial=1, min_value=1, required=False)
+    suspended_until = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
+    dues_forfeited = forms.BooleanField(required=False)
+    reason = forms.CharField(widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Provide specific rationale and scripture/code references'}))
+
+
+class IncidentReportForm(forms.Form):
+    player_id = forms.IntegerField(required=True)
+    incident_type = forms.ChoiceField(
+        choices=[
+            ('misconduct', 'Player Misconduct'),
+            ('dispute', 'Disputed Call / Unsportsmanlike Conduct'),
+            ('equipment', 'Equipment / Safety Violation'),
+            ('other', 'Other Incident'),
+        ],
+        initial='misconduct'
+    )
+    description = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}))
+    is_ejection = forms.BooleanField(required=False)
+
+
+class SportsmanshipRatingForm(forms.Form):
+    rated_team_id = forms.IntegerField(required=True)
+    score = forms.IntegerField(min_value=1, max_value=5, initial=5)
+    respect_for_officials = forms.IntegerField(min_value=1, max_value=5, initial=5)
+    bench_conduct = forms.IntegerField(min_value=1, max_value=5, initial=5)
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 2}))
+
+
+class ScoreDisputeForm(forms.Form):
+    notes = forms.CharField(widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'Specify the score discrepancy, incorrect inning, or disputed call'}))
+
+
+class ScoreResolutionForm(forms.Form):
+    team1_score = forms.IntegerField(min_value=0)
+    team2_score = forms.IntegerField(min_value=0)
+    resolution_notes = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}))
+
+
+class ForfeitForm(forms.Form):
+    winner_id = forms.IntegerField(required=True)
+    notes = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'e.g. Insufficient players at game time'}))
