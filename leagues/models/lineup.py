@@ -7,7 +7,13 @@ from django.conf import settings
 class GameLineupEntry(models.Model):
     game = models.ForeignKey('Game', on_delete=models.CASCADE, related_name='lineup_entries')
     team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='game_lineups')
-    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='lineup_appearances')
+    player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='lineup_appearances',
+        null=True,
+        blank=True
+    )
     batting_order = models.PositiveIntegerField(default=1)
     is_present = models.BooleanField(default=True, help_text="Checked in / present at the ballpark today")
     field_position = models.CharField(max_length=120, blank=True, help_text="e.g., SS / P or primary position")
@@ -15,12 +21,18 @@ class GameLineupEntry(models.Model):
     is_emergency_sub = models.BooleanField(default=False, help_text="Emergency pickup player to avoid forfeit")
     sub_consented_by_opponent = models.BooleanField(default=False, help_text="Opposing coach consented to this emergency sub at game time")
 
+    # Softball Short-Handed 1-Out Differential Rule
+    is_automatic_out = models.BooleanField(default=False, help_text="Short-handed vacant batting slot assessing 1 automatic out")
+    vacant_label = models.CharField(max_length=60, blank=True, default="", help_text="Label for vacant slot")
+
     class Meta:
         ordering = ['team', 'batting_order', 'id']
-        unique_together = [('game', 'team', 'player')]
+        unique_together = [('game', 'team', 'batting_order')]
 
     def get_position_for_inning(self, inning: int) -> str:
         """Returns the specific position for this inning, or fallback to field_position."""
+        if self.is_automatic_out:
+            return "OUT"
         if self.position_rotations:
             pos = self.position_rotations.get(str(inning))
             if pos:
@@ -28,10 +40,11 @@ class GameLineupEntry(models.Model):
         return self.field_position or '-'
 
     def __str__(self):
+        if self.is_automatic_out:
+            return f"#{self.batting_order} [AUTOMATIC OUT] ({self.team.name}) - {self.vacant_label or 'Short-Handed Slot'}"
+        p_name = self.player.display_name if self.player else "Unassigned"
         status = "Present" if self.is_present else "Absent (Skipped)"
-        return f"#{self.batting_order} {self.player.display_name} ({self.team.name}) [{self.field_position}] - {status}"
-
-
+        return f"#{self.batting_order} {p_name} ({self.team.name}) [{self.field_position}] - {status}"
 
 
 class GameRSVP(models.Model):
@@ -48,9 +61,3 @@ class GameRSVP(models.Model):
 
     class Meta:
         ordering = ['-updated_at']
-        unique_together = [('game', 'player')]
-
-    def __str__(self):
-        return f"{self.player.display_name} -> {self.get_response_display()} ({self.game})"
-
-

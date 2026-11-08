@@ -192,6 +192,7 @@ class Game(models.Model):
                         batting_order=idx,
                         is_present=True,
                     )
+        self.sync_shorthanded_automatic_outs()
 
     def get_active_lineup(self, team):
         """Return ordered GameLineupEntry queryset of present players for a team."""
@@ -200,6 +201,68 @@ class Game(models.Model):
             .select_related('player')
             .order_by('batting_order', 'id')
         )
+
+    def sync_shorthanded_automatic_outs(self) -> dict[str, Any]:
+        """
+        Enforces church softball short-handed 1-out differential rule:
+        - If team1_count == team2_count: 0 automatic outs for both teams (e.g. 8 vs 8, 9 vs 9, 10 vs 10).
+        - If team1_count < team2_count and team1_count < 10:
+          Team 1 takes exactly ONE automatic out at the end of its batting order (Spot N1 + 1). Team 2 takes 0 outs.
+        - If team2_count < team1_count and team2_count < 10:
+          Team 2 takes exactly ONE automatic out at the end of its batting order (Spot N2 + 1). Team 1 takes 0 outs.
+        - If both teams >= 10: 0 automatic outs.
+        """
+        from leagues.models.lineup import GameLineupEntry
+        sport = (self.season.league.sport if self.season and self.season.league else '').lower()
+        if sport not in ('softball', 'baseball'):
+            return {'team1_penalty': False, 'team2_penalty': False}
+
+        # Clear existing automatic out slots to recalculate accurately
+        self.lineup_entries.filter(is_automatic_out=True).delete()
+
+        t1_present = self.lineup_entries.filter(team=self.team1, is_present=True, is_automatic_out=False).count()
+        t2_present = self.lineup_entries.filter(team=self.team2, is_present=True, is_automatic_out=False).count()
+
+        t1_penalty = False
+        t2_penalty = False
+        t1_spot = None
+        t2_spot = None
+
+        if t1_present < t2_present and t1_present < 10:
+            t1_penalty = True
+            t1_spot = t1_present + 1
+            GameLineupEntry.objects.create(
+                game=self,
+                team=self.team1,
+                player=None,
+                batting_order=t1_spot,
+                is_present=True,
+                is_automatic_out=True,
+                field_position='OUT',
+                vacant_label=f"Vacant Spot #{t1_spot} (Automatic Out)"
+            )
+        elif t2_present < t1_present and t2_present < 10:
+            t2_penalty = True
+            t2_spot = t2_present + 1
+            GameLineupEntry.objects.create(
+                game=self,
+                team=self.team2,
+                player=None,
+                batting_order=t2_spot,
+                is_present=True,
+                is_automatic_out=True,
+                field_position='OUT',
+                vacant_label=f"Vacant Spot #{t2_spot} (Automatic Out)"
+            )
+
+        return {
+            'team1_penalty': t1_penalty,
+            'team2_penalty': t2_penalty,
+            'team1_count': t1_present,
+            'team2_count': t2_present,
+            'penalty_spot_team1': t1_spot,
+            'penalty_spot_team2': t2_spot,
+        }
 
     
     def push_snapshot(self):
@@ -356,10 +419,18 @@ class Game(models.Model):
             next_entry = active_entries[idx]
             self.team2_batter_index = (idx + 1) % len(active_entries)
 
+        if next_entry.is_automatic_out:
+            self.outs += 1
+            self.log_play(f"[AUTOMATIC OUT] Spot #{next_entry.batting_order} assessed 1 automatic out (short-handed lineup).")
+            if self.outs >= 3:
+                from leagues.services import scoring_engine
+                scoring_engine.handle_side_retired(self, reason=f"3 outs (Auto-Out at Spot #{next_entry.batting_order})")
+                return None
+            else:
+                return self.advance_to_next_batter()
+
         self.current_batter = next_entry.player
-
         self.reset_batter_count()
-
         return self.current_batter
 
     def peek_on_deck_batter(self):
@@ -369,7 +440,10 @@ class Game(models.Model):
         if not active_entries:
             return None
         idx = (self.team1_batter_index if team == self.team1 else self.team2_batter_index) % len(active_entries)
-        return active_entries[idx].player
+        entry = active_entries[idx]
+        if entry.is_automatic_out:
+            return None
+        return entry.player
 
     def decrement_disciplinary_suspensions(self):
         """When an official game is completed, decrement game-count suspensions for players on both teams."""

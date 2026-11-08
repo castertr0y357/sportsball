@@ -46,14 +46,15 @@ def serialize_game_state(game: Game) -> dict[str, Any]:
         {
             'entry_id': e.id,
             'order': e.batting_order,
-            'player_id': e.player.id,
-            'name': e.player.display_name,
-            'jersey': e.player.jersey_number,
+            'player_id': e.player.id if e.player else None,
+            'name': e.player.display_name if e.player else (e.vacant_label or 'AUTOMATIC OUT'),
+            'jersey': e.player.jersey_number if e.player else '-',
             'is_present': e.is_present,
+            'is_automatic_out': e.is_automatic_out,
             'position': e.get_position_for_inning(game.current_inning) or e.field_position,
             'base_position': e.field_position,
-            'has_walkup': bool(e.player.walkup_song_file or e.player.walkup_song_title),
-            'walkup_title': e.player.walkup_song_title,
+            'has_walkup': bool(e.player and (e.player.walkup_song_file or e.player.walkup_song_title)),
+            'walkup_title': e.player.walkup_song_title if e.player else '',
         }
         for e in game.lineup_entries.filter(team=game.team1).select_related('player').order_by('batting_order', 'id')
     ]
@@ -61,14 +62,15 @@ def serialize_game_state(game: Game) -> dict[str, Any]:
         {
             'entry_id': e.id,
             'order': e.batting_order,
-            'player_id': e.player.id,
-            'name': e.player.display_name,
-            'jersey': e.player.jersey_number,
+            'player_id': e.player.id if e.player else None,
+            'name': e.player.display_name if e.player else (e.vacant_label or 'AUTOMATIC OUT'),
+            'jersey': e.player.jersey_number if e.player else '-',
             'is_present': e.is_present,
+            'is_automatic_out': e.is_automatic_out,
             'position': e.get_position_for_inning(game.current_inning) or e.field_position,
             'base_position': e.field_position,
-            'has_walkup': bool(e.player.walkup_song_file or e.player.walkup_song_title),
-            'walkup_title': e.player.walkup_song_title,
+            'has_walkup': bool(e.player and (e.player.walkup_song_file or e.player.walkup_song_title)),
+            'walkup_title': e.player.walkup_song_title if e.player else '',
         }
         for e in game.lineup_entries.filter(team=game.team2).select_related('player').order_by('batting_order', 'id')
     ]
@@ -734,13 +736,21 @@ def apply_dugout_action_internal(game: Game, action: str, payload: dict[str, Any
         if out_entry and in_entry and out_entry.team_id == in_entry.team_id:
             out_order = out_entry.batting_order
             out_pos = out_entry.field_position
+            in_order = in_entry.batting_order
+
+            # Move out_entry to temporary high slot to avoid unique constraint collision
+            out_entry.batting_order = 10000 + out_entry.id
             out_entry.is_present = False
-            out_entry.save(update_fields=['is_present'])
+            out_entry.save(update_fields=['batting_order', 'is_present'])
 
             in_entry.batting_order = out_order
             in_entry.field_position = out_pos
             in_entry.is_present = True
             in_entry.save(update_fields=['batting_order', 'field_position', 'is_present'])
+
+            out_entry.batting_order = in_order
+            out_entry.field_position = "Bench"
+            out_entry.save(update_fields=['batting_order', 'field_position'])
 
             if game.current_batter_id == out_entry.player_id:
                 game.current_batter = in_entry.player
@@ -760,11 +770,14 @@ def apply_dugout_action_internal(game: Game, action: str, payload: dict[str, Any
             if idx is not None:
                 swap_idx = idx - 1 if direction == 'up' else idx + 1
                 if 0 <= swap_idx < len(siblings):
+                    # Offset to temporary orders to avoid unique_together collision
+                    for i, item in enumerate(siblings):
+                        item.batting_order = 10000 + i
+                        item.save(update_fields=['batting_order'])
                     siblings[idx], siblings[swap_idx] = siblings[swap_idx], siblings[idx]
                     for new_order, item in enumerate(siblings, start=1):
-                        if item.batting_order != new_order:
-                            item.batting_order = new_order
-                            item.save(update_fields=['batting_order'])
+                        item.batting_order = new_order
+                        item.save(update_fields=['batting_order'])
 
     return trigger_walkup
 

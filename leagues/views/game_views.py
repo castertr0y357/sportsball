@@ -402,6 +402,7 @@ class GameLineupBuilderView(LoginRequiredMixin, View):
                 entry.is_present = (present_val and eligible)
                 entry.save(update_fields=['batting_order', 'field_position', 'position_rotations', 'is_present'])
 
+            game.sync_shorthanded_automatic_outs()
             messages.success(request, f"Saved batting order and defensive rotations for {team.name}!")
 
         return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
@@ -508,9 +509,11 @@ class GameLineupBuilderView(LoginRequiredMixin, View):
         opponent = game.team2 if team == game.team1 else game.team1
         has_saved_default = bool(team.default_lineup and team.default_lineup.get('entries'))
 
+        shorthanded_info = game.sync_shorthanded_automatic_outs()
         return {
             'game': game,
             'team': team,
+            'shorthanded_info': shorthanded_info,
             'opponent': opponent,
             'entries': entries,
             'available_positions': available_positions,

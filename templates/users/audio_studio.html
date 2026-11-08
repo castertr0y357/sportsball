@@ -57,7 +57,7 @@
             🏆 Team Intros &amp; Anthems
         </button>
         {% endif %}
-        <button type="button" class="studio-tab-btn {% if initial_tab == 'upload_trim' %}active{% endif %}" onclick="switchStudioTab('upload_trim')">
+        <button type="button" id="tab-upload-btn" class="studio-tab-btn {% if initial_tab == 'upload_trim' %}active{% endif %}" onclick="switchStudioTab('upload_trim')">
             ✂️ Upload &amp; Precision Cut (0.1s)
         </button>
         <button type="button" class="studio-tab-btn {% if initial_tab == 'jukebox' %}active{% endif %}" onclick="switchStudioTab('jukebox')">
@@ -162,7 +162,7 @@
                         <div>
                             <h4 style="margin: 0; font-size: 1.1rem; color: #38bdf8;">{{ team.name }}</h4>
                             <div style="font-size: 0.85rem; color: var(--text-muted);">
-                                {{ team.league.name }} &bull; Sport: <strong>{{ team.league.sport|title }}</strong> &bull; Church: {{ team.church.name|default:"Independent" }}
+                                {{ team.league.name }} &bull; Sport: <strong>{{ team.league.sport|title }}</strong> &bull; Church: {% if team.church %}{{ team.church.name }}{% else %}Independent{% endif %}
                             </div>
                         </div>
                         <div style="text-align: right;">
@@ -371,7 +371,7 @@
                             <span class="badge badge-secondary" style="font-size: 0.75rem;">{{ track.duration_seconds|floatformat:1 }}s</span>
                         </div>
                         <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
-                            Cut: {{ track.start_seconds|floatformat:1 }}s &rarr; {{ track.end_seconds|floatformat:1 }}s &bull; Shared by {{ track.user.display_name|default:track.team.name }}
+                            Cut: {{ track.start_seconds|floatformat:1 }}s &rarr; {{ track.end_seconds|floatformat:1 }}s &bull; Shared by {% if track.user %}{{ track.user.display_name }}{% elif track.team %}{{ track.team.name }}{% else %}Community{% endif %}
                         </div>
                     </div>
 
@@ -428,7 +428,7 @@
 
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;">Reason for Veto</label>
-                <textarea name="veto_reason" class="form-control" rows="2" placeholder="e.g. Inappropriate lyrics, explicit content, unedifying themes" required
+                <textarea name="veto_reason" id="vetoReasonInput" class="form-control" rows="2" placeholder="e.g. Inappropriate lyrics, explicit content, unedifying themes" required
                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background);"></textarea>
             </div>
 
@@ -575,7 +575,7 @@ function filterJukebox() {
 
 function openVetoModal(trackId, trackTitle) {
     document.getElementById('vetoTrackTitle').value = trackTitle;
-    document.getElementById('vetoForm').action = `/profile/audio-studio/${trackId}/veto/`;
+    document.getElementById('vetoForm').action = `/users/profile/audio-studio/${trackId}/veto/`;
     document.getElementById('vetoModal').style.display = 'flex';
 }
 
