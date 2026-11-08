@@ -63,4 +63,14 @@ urlpatterns = [
     path('<int:league_id>/pools/officials/add/', views.add_league_official, name='add_league_official'),
     path('<int:league_id>/pools/officials/<int:user_id>/remove/', views.remove_league_official, name='remove_league_official'),
     path('seasons/<int:season_id>/teams/import/', views.import_season_teams, name='import_season_teams'),
+    # Disciplinary, Suspension & Incident Engine
+    path('<int:league_id>/discipline/', views.manage_disciplinary_hub, name='manage_disciplinary_hub'),
+    path('discipline/<int:record_id>/reinstate/', views.reinstate_disciplinary_penalty, name='reinstate_disciplinary_penalty'),
+    path('games/<int:game_id>/incident/report/', views.report_game_incident, name='report_game_incident'),
+    # Venue Condition & Conflict Relocation
+    path('venues/<int:venue_id>/status/', views.update_venue_status, name='update_venue_status'),
+    path('venues/<int:venue_id>/relocate/', views.relocate_venue_games, name='relocate_venue_games'),
+    # Sportsmanship & Season Renewal Evaluations
+    path('games/<int:game_id>/sportsmanship/rate/', views.submit_sportsmanship_rating, name='submit_sportsmanship_rating'),
+    path('<int:league_id>/sportsmanship/', views.manage_sportsmanship_dashboard, name='manage_sportsmanship_dashboard'),
 ]

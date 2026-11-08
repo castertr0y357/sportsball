@@ -46,6 +46,24 @@ class League(models.Model):
         default=True,
         help_text="Enable 1-tap 30s/60s timeout countdown timer"
     )
+    # League Policies: Substitutes & Minor Players
+    allow_emergency_subs = models.BooleanField(
+        default=False,
+        help_text="Allow teams to use approved guest/substitute players to prevent regular-season forfeits."
+    )
+    allow_minors = models.BooleanField(
+        default=False,
+        help_text="Permit players under 18 to participate with verified parental guardian waiver."
+    )
+    # Configurable Sportsmanship Thresholds for Season Re-Invitation
+    sportsmanship_good_threshold = models.DecimalField(
+        max_digits=3, decimal_places=2, default=4.00,
+        help_text="Minimum average score for automatic renewal invitation (e.g., 4.00)"
+    )
+    sportsmanship_review_threshold = models.DecimalField(
+        max_digits=3, decimal_places=2, default=3.00,
+        help_text="Scores between review and good threshold require committee review before re-invitation."
+    )
     admin = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -340,6 +358,49 @@ class Team(models.Model):
     def __str__(self):
         return f"{self.name} ({self.season.name})"
 
+    def get_sportsmanship_summary(self):
+        """Calculates aggregate sportsmanship metrics and renewal standing."""
+        ratings = list(self.received_sportsmanship_ratings.all())
+        good_th = float(self.league.sportsmanship_good_threshold) if (self.league and self.league.sportsmanship_good_threshold) else 4.0
+        rev_th = float(self.league.sportsmanship_review_threshold) if (self.league and self.league.sportsmanship_review_threshold) else 3.0
+
+        if not ratings:
+            return {
+                'count': 0,
+                'avg_score': 5.0,
+                'avg_respect': 5.0,
+                'avg_bench': 5.0,
+                'status': 'good',
+                'status_label': 'Good Standing (Unrated)',
+                'good_threshold': good_th,
+                'review_threshold': rev_th,
+            }
+
+        avg_score = round(sum(r.score for r in ratings) / len(ratings), 2)
+        avg_respect = round(sum(r.respect_for_officials for r in ratings) / len(ratings), 2)
+        avg_bench = round(sum(r.bench_conduct for r in ratings) / len(ratings), 2)
+
+        if avg_score >= good_th:
+            status = 'good'
+            status_label = 'Good Standing (Auto-Renew)'
+        elif avg_score >= rev_th:
+            status = 'review'
+            status_label = 'Pastoral / Committee Review Required'
+        else:
+            status = 'probation'
+            status_label = 'Probation / Deny Renewal'
+
+        return {
+            'count': len(ratings),
+            'avg_score': avg_score,
+            'avg_respect': avg_respect,
+            'avg_bench': avg_bench,
+            'status': status,
+            'status_label': status_label,
+            'good_threshold': good_th,
+            'review_threshold': rev_th,
+        }
+
 
 class SeasonRegistration(models.Model):
     STATUS_CHOICES = [
@@ -399,6 +460,7 @@ class Game(models.Model):
     ]
 
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='games', null=True, blank=True)
+    venue = models.ForeignKey('LeagueVenue', on_delete=models.SET_NULL, null=True, blank=True, related_name='scheduled_games')
     team1 = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='games_as_team1', verbose_name="Home Team")
     team2 = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='games_as_team2', verbose_name="Away Team")
     date = models.DateTimeField()
@@ -484,6 +546,7 @@ class Game(models.Model):
         if not self.season_id and self.team1_id:
             self.season = self.team1.season
         if self.status == 'completed':
+            self.decrement_disciplinary_suspensions()
             winner = None
             if self.team1_score > self.team2_score:
                 winner = self.team1.name
@@ -555,6 +618,21 @@ class Game(models.Model):
             return None
         idx = (self.team1_batter_index if team == self.team1 else self.team2_batter_index) % len(active_entries)
         return active_entries[idx].player
+
+    def decrement_disciplinary_suspensions(self):
+        """When an official game is completed, decrement game-count suspensions for players on both teams."""
+        if not self.season or not self.season.league:
+            return
+        league = self.season.league
+        team_ids = [self.team1_id, self.team2_id]
+        active_records = PlayerDisciplinaryRecord.objects.filter(
+            league=league,
+            status='active',
+            penalty_type='game_count',
+            team_id__in=team_ids
+        )
+        for record in active_records:
+            record.record_game_served()
 
     def get_team_rsvp_summary(self, team):
         """Returns headcount breakdown of RSVPs for players on this team."""
@@ -786,6 +864,8 @@ class GameLineupEntry(models.Model):
     is_present = models.BooleanField(default=True, help_text="Checked in / present at the ballpark today")
     field_position = models.CharField(max_length=120, blank=True, help_text="e.g., SS / P or primary position")
     position_rotations = models.JSONField(default=dict, blank=True, help_text="Inning or period rotations (e.g. {'1': 'SS', '2': 'P'})")
+    is_emergency_sub = models.BooleanField(default=False, help_text="Emergency pickup player to avoid forfeit")
+    sub_consented_by_opponent = models.BooleanField(default=False, help_text="Opposing coach consented to this emergency sub at game time")
 
     class Meta:
         ordering = ['team', 'batting_order', 'id']
@@ -872,10 +952,22 @@ class GameOfficialAssignment(models.Model):
 
 
 class LeagueVenue(models.Model):
+    VENUE_STATUS_CHOICES = [
+        ('open', 'Open & Playable'),
+        ('caution', 'Caution / Wet Conditions'),
+        ('closed', 'Closed / Unplayable (Weather)'),
+        ('conflict', 'Conflict / Relocated'),
+        ('maintenance', 'Facility Maintenance'),
+    ]
+
     league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='venues')
     name = models.CharField(max_length=150, help_text="Venue / Field / Court Name (e.g. Field #1, North Gym)")
     address = models.CharField(max_length=255, blank=True, help_text="Street address or location directions")
     notes = models.TextField(blank=True, help_text="Parking notes, gate codes, lighting switches")
+    status = models.CharField(max_length=20, choices=VENUE_STATUS_CHOICES, default='open')
+    status_note = models.CharField(max_length=255, blank=True, help_text="e.g. Infield standing water. Games moved to Turf Field 2.")
+    status_updated_at = models.DateTimeField(auto_now=True)
+    status_updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='venue_status_updates')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -885,3 +977,95 @@ class LeagueVenue(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.league.name})"
+
+
+class PlayerDisciplinaryRecord(models.Model):
+    PENALTY_TYPE_CHOICES = [
+        ('game_count', 'Game Count Suspension'),
+        ('date_bound', 'Date-Bound Suspension'),
+        ('permanent_expulsion', 'Permanent Expulsion / League Ban'),
+        ('formal_warning', 'Official Written Warning'),
+    ]
+    STATUS_CHOICES = [
+        ('active', 'Active Penalty'),
+        ('served', 'Completed / Reinstated'),
+        ('appealed', 'Under Committee Appeal'),
+        ('rescinded', 'Rescinded by Commissioner'),
+    ]
+
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='disciplinary_records')
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='disciplinary_records')
+    team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='disciplinary_records')
+    game = models.ForeignKey('Game', on_delete=models.SET_NULL, null=True, blank=True, related_name='disciplinary_incidents')
+
+    penalty_type = models.CharField(max_length=30, choices=PENALTY_TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+
+    games_suspended_total = models.PositiveIntegerField(default=0)
+    games_served = models.PositiveIntegerField(default=0)
+    suspended_until = models.DateTimeField(null=True, blank=True)
+    dues_forfeited = models.BooleanField(default=False)
+
+    reason = models.TextField(help_text="Explanation of incident or by-law violation")
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='issued_penalties')
+    issued_at = models.DateTimeField(auto_now_add=True)
+    reinstated_at = models.DateTimeField(null=True, blank=True)
+    resolution_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-issued_at']
+
+    def is_currently_active(self):
+        if self.status != 'active':
+            return False
+        if self.penalty_type == 'permanent_expulsion':
+            return True
+        if self.penalty_type == 'date_bound' and self.suspended_until:
+            return timezone.now() < self.suspended_until
+        if self.penalty_type == 'game_count':
+            return self.games_served < self.games_suspended_total
+        return False
+
+    def remaining_games(self):
+        if self.penalty_type != 'game_count':
+            return 0
+        return max(0, self.games_suspended_total - self.games_served)
+
+    def record_game_served(self):
+        """Increment served games. If reached total, automatically reinstate!"""
+        if self.penalty_type == 'game_count' and self.status == 'active':
+            self.games_served += 1
+            if self.games_served >= self.games_suspended_total:
+                self.status = 'served'
+                self.reinstated_at = timezone.now()
+                self.resolution_notes = f"{self.resolution_notes}\n[AUTO-REINSTATED]: Served full {self.games_suspended_total} game suspension.".strip()
+            self.save(update_fields=['games_served', 'status', 'reinstated_at', 'resolution_notes'])
+
+    def __str__(self):
+        return f"{self.player.display_name} - {self.get_penalty_type_display()} ({self.get_status_display()})"
+
+
+class GameSportsmanshipRating(models.Model):
+    EVALUATOR_ROLE_CHOICES = [
+        ('official', 'Umpire / Referee'),
+        ('coach', 'Opposing Coach'),
+        ('commissioner', 'League Commissioner / Field Marshal'),
+    ]
+
+    game = models.ForeignKey('Game', on_delete=models.CASCADE, related_name='sportsmanship_ratings')
+    evaluator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='submitted_sportsmanship_ratings')
+    evaluator_role = models.CharField(max_length=20, choices=EVALUATOR_ROLE_CHOICES)
+    rated_team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='received_sportsmanship_ratings')
+
+    score = models.PositiveIntegerField(default=5, help_text="1 to 5 stars overall fellowship score")
+    respect_for_officials = models.PositiveIntegerField(default=5, help_text="1 to 5 stars conduct towards officials")
+    bench_conduct = models.PositiveIntegerField(default=5, help_text="1 to 5 stars sideline/bench decorum")
+    notes = models.TextField(blank=True, help_text="Specific observations or praise")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = [('game', 'evaluator', 'rated_team')]
+
+    def __str__(self):
+        return f"{self.rated_team.name} rated {self.score}★ by {self.evaluator.display_name} ({self.get_evaluator_role_display()})"

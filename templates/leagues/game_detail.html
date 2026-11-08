@@ -275,6 +275,150 @@ function shareGameLink() {
 }
 </script>
 
+<!-- Post-Game Fellowship & Sportsmanship Rating Scorecard -->
+{% if game.status == 'completed' or game.status == 'pending_confirmation' %}
+<div class="card" style="margin-bottom:1.5rem; background:rgba(16,185,129,0.05); border:1px solid #10b981;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+        <h3 style="margin:0; font-size:1.1rem; color:#065f46; display:flex; align-items:center; gap:0.4rem;">
+            <span>🤝</span> Christian Fellowship &amp; Sportsmanship Scorecard
+        </h3>
+        {% if game.season and game.season.league %}
+            <a href="{% url 'manage_sportsmanship_dashboard' game.season.league.id %}" style="font-size:0.8rem; color:var(--text-muted);">League Standings &rarr;</a>
+        {% endif %}
+    </div>
+    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+        Official referee and coach evaluations directly inform future season re-invitation decisions.
+    </p>
+
+    <!-- Rating Submission Form -->
+    <form method="post" action="{% url 'submit_sportsmanship_rating' game.id %}" style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:1rem; margin-bottom:1rem;">
+        {% csrf_token %}
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.75rem; margin-bottom:0.75rem;">
+            <div>
+                <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Rate Team:</label>
+                <select name="rated_team_id" class="input" required style="width:100%; padding:0.4rem;">
+                    <option value="">-- Choose Team to Evaluate --</option>
+                    <option value="{{ game.team1.id }}">{{ game.team1.name }} (Home)</option>
+                    <option value="{{ game.team2.id }}">{{ game.team2.name }} (Away)</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Overall Fellowship (1-5★):</label>
+                <select name="score" class="input" style="width:100%; padding:0.4rem;">
+                    <option value="5" selected>5 ★ - Exemplary Fellowship &amp; Grace</option>
+                    <option value="4">4 ★ - Good Sportsmanship</option>
+                    <option value="3">3 ★ - Acceptable / Average</option>
+                    <option value="2">2 ★ - Contentious / Poor Attitude</option>
+                    <option value="1">1 ★ - Hostile / Conduct Violations</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Respect for Officials (1-5):</label>
+                <select name="respect_for_officials" class="input" style="width:100%; padding:0.4rem;">
+                    <option value="5" selected>5 - Full Deference &amp; Courtesy</option>
+                    <option value="4">4 - Respectful with Minor Disagreements</option>
+                    <option value="3">3 - Occasional Griping</option>
+                    <option value="2">2 - Repeated Arguing of Calls</option>
+                    <option value="1">1 - Hostile / Abusive towards Referees</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Bench &amp; Sideline Decorum (1-5):</label>
+                <select name="bench_conduct" class="input" style="width:100%; padding:0.4rem;">
+                    <option value="5" selected>5 - Uplifting &amp; Orderly</option>
+                    <option value="4">4 - Encouraging</option>
+                    <option value="3">3 - Standard</option>
+                    <option value="2">2 - Rowdy / Antagonistic</option>
+                    <option value="1">1 - Profanity / Unchristian Heckling</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Commendations or Incident Observations:</label>
+            <textarea name="notes" rows="2" class="input" placeholder="Note examples of Christlike testimony, or specific concerns..." style="width:100%;"></textarea>
+        </div>
+        <button type="submit" class="btn btn-sm" style="background:#059669; color:#fff; font-weight:700;">
+            ✓ Submit Sportsmanship Rating
+        </button>
+    </form>
+
+    <!-- Submitted Ratings -->
+    {% if game.sportsmanship_ratings.all %}
+        <div style="font-size:0.82rem; color:var(--text-muted); font-weight:700; margin-bottom:0.4rem;">Submitted Ratings for this Game:</div>
+        <div style="display:flex; flex-direction:column; gap:0.4rem;">
+            {% for r in game.sportsmanship_ratings.all %}
+                <div style="background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:0.5rem 0.75rem; font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong>{{ r.rated_team.name }}:</strong>
+                        <span style="color:#059669; font-weight:700;">{{ r.score }}★</span>
+                        (Ref: {{ r.respect_for_officials }}/5, Bench: {{ r.bench_conduct }}/5)
+                        {% if r.notes %}<span style="color:var(--text-muted); font-style:italic;">&mdash; "{{ r.notes }}"</span>{% endif %}
+                    </div>
+                    <span class="badge" style="font-size:0.72rem;">{{ r.get_evaluator_role_display }}: {{ r.evaluator.display_name }}</span>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Umpire / Scorer Incident & Ejection Reporting -->
+{% if can_score %}
+<div class="card" style="margin-bottom:1.5rem; background:rgba(220,38,38,0.03); border:1px solid rgba(220,38,38,0.2);">
+    <details>
+        <summary style="font-size:0.92rem; font-weight:700; color:#dc2626; cursor:pointer;">
+            ⚖️ Report Participant Misconduct / Game Ejection
+        </summary>
+        <form method="post" action="{% url 'report_game_incident' game.id %}" style="margin-top:0.85rem;">
+            {% csrf_token %}
+            <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:0.75rem;">
+                Official umpires and scorekeepers can document flagrant violations, technical fouls, red cards, or ejections.
+            </p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+                <div>
+                    <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Participant:</label>
+                    <select name="player_id" class="input" required style="width:100%; padding:0.4rem;">
+                        <option value="">-- Select Player Involved --</option>
+                        <optgroup label="{{ game.team1.name }}">
+                            {% for p in game.team1.players.all %}
+                                <option value="{{ p.id }}">{{ p.display_name }} ({{ game.team1.name }})</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="{{ game.team2.name }}">
+                            {% for p in game.team2.players.all %}
+                                <option value="{{ p.id }}">{{ p.display_name }} ({{ game.team2.name }})</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Incident Type:</label>
+                    <select name="incident_type" class="input" style="width:100%; padding:0.4rem;">
+                        <option value="unsportsmanlike">Unsportsmanlike Conduct</option>
+                        <option value="referee_abuse">Verbal Abuse of Official</option>
+                        <option value="physical_altercation">Physical Altercation / Fighting</option>
+                        <option value="equipment_abuse">Equipment / Field Damage</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+                <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; font-weight:700; color:#dc2626; cursor:pointer;">
+                    <input type="checkbox" name="is_ejection" value="1">
+                    Ejection Issued (Automatically triggers 1-game suspension pending committee review)
+                </label>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+                <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:0.25rem;">Incident Description &amp; Details:</label>
+                <textarea name="description" rows="2" class="input" required placeholder="Describe what occurred, inning/time, and umpire ruling..." style="width:100%;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-sm" style="background:#dc2626; color:#fff; font-weight:700;">
+                Submit Incident Report
+            </button>
+        </form>
+    </details>
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:1.5rem;">
     <h2>Player Box Score &amp; Statistics</h2>
     {% if player_stats %}

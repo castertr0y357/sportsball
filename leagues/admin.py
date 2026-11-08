@@ -1,12 +1,15 @@
 from django.contrib import admin
-from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry
+from .models import (
+    League, Season, Team, SeasonRegistration, Game, GameLineupEntry,
+    LeagueVenue, PlayerDisciplinaryRecord, GameSportsmanshipRating
+)
 
 
 @admin.register(League)
 class LeagueAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sport', 'admin', 'created_at')
+    list_display = ('name', 'sport', 'admin', 'allow_emergency_subs', 'allow_minors', 'sportsmanship_good_threshold', 'created_at')
     search_fields = ('name', 'admin__username')
-    list_filter = ('sport', 'created_at')
+    list_filter = ('sport', 'allow_emergency_subs', 'allow_minors', 'created_at')
 
 
 @admin.register(Season)
@@ -44,6 +47,27 @@ class GameAdmin(admin.ModelAdmin):
 
 @admin.register(GameLineupEntry)
 class GameLineupEntryAdmin(admin.ModelAdmin):
-    list_display = ('game', 'team', 'batting_order', 'player', 'field_position', 'is_present')
-    list_filter = ('team', 'is_present')
+    list_display = ('game', 'team', 'batting_order', 'player', 'field_position', 'is_present', 'is_emergency_sub')
+    list_filter = ('team', 'is_present', 'is_emergency_sub')
     search_fields = ('player__username', 'player__first_name', 'player__last_name', 'team__name')
+
+
+@admin.register(LeagueVenue)
+class LeagueVenueAdmin(admin.ModelAdmin):
+    list_display = ('name', 'league', 'status', 'status_note', 'status_updated_at', 'is_active')
+    list_filter = ('league', 'status', 'is_active')
+    search_fields = ('name', 'league__name', 'address')
+
+
+@admin.register(PlayerDisciplinaryRecord)
+class PlayerDisciplinaryRecordAdmin(admin.ModelAdmin):
+    list_display = ('player', 'league', 'team', 'penalty_type', 'status', 'games_suspended_total', 'games_served', 'suspended_until', 'issued_at')
+    list_filter = ('league', 'penalty_type', 'status')
+    search_fields = ('player__username', 'player__first_name', 'player__last_name', 'reason')
+
+
+@admin.register(GameSportsmanshipRating)
+class GameSportsmanshipRatingAdmin(admin.ModelAdmin):
+    list_display = ('game', 'rated_team', 'evaluator', 'evaluator_role', 'score', 'respect_for_officials', 'bench_conduct', 'created_at')
+    list_filter = ('evaluator_role', 'score')
+    search_fields = ('rated_team__name', 'evaluator__username', 'game__team1__name', 'game__team2__name')

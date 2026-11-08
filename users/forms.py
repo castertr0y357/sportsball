@@ -69,12 +69,14 @@ class ProfileForm(forms.ModelForm):
         fields = (
             'first_name', 'last_name', 'email', 'church',
             'phone', 'emergency_contact_name', 'emergency_contact_phone',
+            'birthdate', 'parent_guardian_name', 'parent_guardian_phone',
             'jersey_number', 'bio', 'is_free_agent',
             'walkup_song_title', 'walkup_song_file',
             'walkup_start_seconds', 'walkup_duration_seconds',
         )
         widgets = {
             'bio': forms.Textarea(attrs={'rows': 3}),
+            'birthdate': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def clean_walkup_song_file(self):

@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% block title %}Disciplinary &amp; Conduct Hub &bull; {{ league.name }} &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">⚖️ Disciplinary &amp; Participant Conduct Hub</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Manage player conduct hearings, suspensions (game-count or date-bound), and league expulsions for <strong>{{ league.name }}</strong>.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="{% url 'manage_sportsmanship_dashboard' league.id %}" class="btn btn-secondary">🤝 Sportsmanship Dashboard</a>
+        <a href="{% url 'manage_league_pools' league.id %}" class="btn btn-secondary">🏟️ Master Pools</a>
+        <a href="{% url 'season_list' league.id %}" class="btn btn-secondary">&larr; Seasons</a>
+    </div>
+</div>
+
+<div class="form-grid-2">
+    <!-- Issue Disciplinary Action Card -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">+ Issue Disciplinary Ruling</h2>
+            <span class="badge" style="background:var(--surface-alt); border:1px solid var(--border);">Commissioner Authority</span>
+        </div>
+
+        <form method="post" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create_disciplinary_record">
+
+            <div>
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Participant / Player *</label>
+                <select name="player_id" class="form-control" required style="width: 100%; padding: 0.45rem;">
+                    <option value="">-- Select League Participant --</option>
+                    {% for p in league_players %}
+                        <option value="{{ p.id }}">{{ p.display_name }} ({{ p.email }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Team Affiliation (Optional)</label>
+                <select name="team_id" class="form-control" style="width: 100%; padding: 0.45rem;">
+                    <option value="">-- Select Team --</option>
+                    {% for t in league_teams %}
+                        <option value="{{ t.id }}">{{ t.name }} ({{ t.season.name }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Penalty Type *</label>
+                <select name="penalty_type" id="penaltyTypeSelect" class="form-control" required style="width: 100%; padding: 0.45rem;">
+                    <option value="game_count">Game Count Suspension (Auto-decrements as team plays)</option>
+                    <option value="date_bound">Date-Bound Suspension (Suspended until date)</option>
+                    <option value="permanent_expulsion">Permanent Expulsion / League Ban (Account Locked)</option>
+                    <option value="formal_warning">Official Written Warning (On record)</option>
+                </select>
+            </div>
+
+            <div id="gameCountWrap">
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Number of Games Suspended</label>
+                <input type="number" name="games_suspended_total" value="1" min="1" max="20" class="form-control" style="width: 100%; padding: 0.45rem;">
+                <span style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-top: 0.2rem;">
+                    System automatically counts each official game the team completes and reinstates the player when served.
+                </span>
+            </div>
+
+            <div id="dateBoundWrap" style="display: none;">
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Suspended Through Date</label>
+                <input type="datetime-local" name="suspended_until" class="form-control" style="width: 100%; padding: 0.45rem;">
+            </div>
+
+            <div id="expulsionNoticeWrap" style="display: none; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 0.75rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #991b1b; font-size: 0.85rem; margin: 0;">
+                    <input type="checkbox" name="dues_forfeited" value="1" checked>
+                    Forfeit paid league dues and disable user login credentials immediately.
+                </label>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;">Violation Incident &amp; Rationale *</label>
+                <textarea name="reason" rows="3" class="form-control" required placeholder="Detail specific misconduct, ejection notes, or bylaw violations..." style="width: 100%; padding: 0.45rem;"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="font-weight: 700; margin-top: 0.5rem;">
+                ⚖️ Record Disciplinary Action
+            </button>
+        </form>
+    </div>
+
+    <!-- Active Suspensions & Bans List -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2 class="admin-card-title">⛔ Active Penalties &amp; Suspensions</h2>
+            <span class="badge" style="background: rgba(220,38,38,0.1); color: #dc2626; border: 1px solid #dc2626; font-size: 0.8rem;">
+                {{ active_records|length }} Active
+            </span>
+        </div>
+
+        {% if active_records %}
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                {% for r in active_records %}
+                <div style="background: var(--surface-alt); border: 1px solid var(--border); border-left: 4px solid #dc2626; border-radius: 4px; padding: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap;">
+                        <div>
+                            <strong style="font-size: 0.95rem;">{{ r.player.display_name }}</strong>
+                            {% if r.team %}<span class="badge" style="font-size: 0.75rem;">{{ r.team.name }}</span>{% endif %}
+                            <div style="font-size: 0.82rem; color: #dc2626; font-weight: 700; margin-top: 0.2rem;">
+                                {{ r.get_penalty_type_display }}
+                                {% if r.penalty_type == 'game_count' %}
+                                    &bull; {{ r.games_served }}/{{ r.games_suspended_total }} Games Served ({{ r.remaining_games }} remaining)
+                                {% elif r.penalty_type == 'date_bound' %}
+                                    &bull; Until {{ r.suspended_until|date:"M j, Y @ g:i A" }}
+                                {% elif r.penalty_type == 'permanent_expulsion' %}
+                                    &bull; Permanent Expulsion &amp; Ban
+                                {% endif %}
+                            </div>
+                        </div>
+                        <form method="post" action="{% url 'reinstate_disciplinary_penalty' r.id %}" onsubmit="return confirm('Lift suspension and reinstate {{ r.player.display_name }}?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="reinstatement_notes" value="Reinstated early by commissioner">
+                            <button type="submit" class="btn btn-sm" style="background: #16a34a; color: #fff; font-size: 0.78rem;">
+                                ✓ Reinstate
+                            </button>
+                        </form>
+                    </div>
+
+                    <p style="margin: 0.4rem 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                        <strong>Incident:</strong> {{ r.reason }}
+                    </p>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem;">
+                        Issued by {{ r.issued_by.display_name|default:"Commissioner" }} on {{ r.issued_at|date:"M j, Y" }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="background: rgba(22,163,74,0.06); border: 1px solid #16a34a; border-radius: 4px; padding: 1.5rem; text-align: center;">
+                <span style="font-size: 2rem;">🕊️</span>
+                <p style="margin: 0.5rem 0 0; color: #16a34a; font-weight: 700;">No Active Disciplinary Penalties</p>
+                <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: var(--text-muted);">All league players are in good standing.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Past / Served Incidents Log -->
+<div class="admin-card" style="margin-top: 1.5rem;">
+    <div class="admin-card-header">
+        <h2 class="admin-card-title">📋 Historical Disciplinary Audit Trail</h2>
+        <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem;">
+            {{ past_records|length }} Archived
+        </span>
+    </div>
+
+    {% if past_records %}
+        <div class="table-responsive">
+            <table class="table" style="font-size: 0.88rem;">
+                <thead>
+                    <tr>
+                        <th>Participant</th>
+                        <th>Penalty</th>
+                        <th>Status</th>
+                        <th>Incident Notes</th>
+                        <th>Issued</th>
+                        <th>Reinstated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in past_records %}
+                    <tr>
+                        <td><strong>{{ p.player.display_name }}</strong></td>
+                        <td>{{ p.get_penalty_type_display }}</td>
+                        <td>
+                            <span class="badge" style="font-size: 0.75rem; background: var(--surface-alt);">{{ p.get_status_display }}</span>
+                        </td>
+                        <td style="max-width: 250px;">{{ p.reason }}</td>
+                        <td style="white-space: nowrap;">{{ p.issued_at|date:"M j, Y" }}</td>
+                        <td style="white-space: nowrap;">{{ p.reinstated_at|date:"M j, Y"|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">No past incidents on record.</p>
+    {% endif %}
+</div>
+
+<script>
+const select = document.getElementById('penaltyTypeSelect');
+const countWrap = document.getElementById('gameCountWrap');
+const dateWrap = document.getElementById('dateBoundWrap');
+const expWrap = document.getElementById('expulsionNoticeWrap');
+
+select.addEventListener('change', function() {
+    countWrap.style.display = (this.value === 'game_count') ? 'block' : 'none';
+    dateWrap.style.display = (this.value === 'date_bound') ? 'block' : 'none';
+    expWrap.style.display = (this.value === 'permanent_expulsion') ? 'block' : 'none';
+});
+</script>
+{% endblock %}

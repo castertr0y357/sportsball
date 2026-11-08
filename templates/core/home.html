@@ -38,6 +38,42 @@
 {% endif %}
 
 <!-- Tier 1 Friction Removal: Overall Commissioner Executive Health Command Center -->
+<!-- Real-time Field Conditions & Venue Status Hotline -->
+{% if active_venues %}
+<div class="card" style="margin-bottom:1.5rem; background:var(--surface); border:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.4rem;">
+            <span>🏟️</span> Real-time Field Conditions &amp; Weather Hotline
+        </h3>
+        <span style="font-size:0.78rem; color:var(--text-muted);">Updated live by league directors</span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.65rem;">
+        {% for v in active_venues %}
+            <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:6px; padding:0.65rem 0.85rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
+                    <strong style="font-size:0.9rem;">{{ v.name }}</strong>
+                    {% if v.status == 'open' %}
+                        <span class="badge" style="background:#16a34a; color:#fff; font-size:0.72rem;">🟢 Open</span>
+                    {% elif v.status == 'caution' %}
+                        <span class="badge" style="background:#d97706; color:#fff; font-size:0.72rem;">🟡 Caution</span>
+                    {% elif v.status == 'closed' %}
+                        <span class="badge" style="background:#dc2626; color:#fff; font-size:0.72rem;">🔴 Closed</span>
+                    {% elif v.status == 'conflict' %}
+                        <span class="badge" style="background:#9333ea; color:#fff; font-size:0.72rem;">⚠️ Relocated</span>
+                    {% else %}
+                        <span class="badge" style="background:#64748b; color:#fff; font-size:0.72rem;">🔧 Maintenance</span>
+                    {% endif %}
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.25rem;">
+                    {{ v.league.name }}
+                    {% if v.status_note %} &bull; <em>"{{ v.status_note }}"</em>{% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if executive_stats %}
 <div class="card" style="margin-bottom:1.5rem; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border:1px solid #334155;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.5rem;">

@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.db.models import F, Max, Q
-from .models import League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP, GameOfficialAssignment, LeagueVenue
+from .models import (League, Season, Team, SeasonRegistration, Game, GameLineupEntry, GameRSVP, GameOfficialAssignment, LeagueVenue, PlayerDisciplinaryRecord, GameSportsmanshipRating)
 from core.services.notifications import send_discord_notification, send_twilio_sms
 from .forms import (
     LeagueForm, SeasonForm, TeamForm, SeasonRegistrationForm,
@@ -1577,6 +1577,38 @@ def game_lineup_builder(request, game_id, team_id):
                 messages.warning(request, "No Master Lineup Template has been saved yet.")
             return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
 
+        elif action == 'add_emergency_sub':
+            league_obj = game.season.league if (game.season and game.season.league) else None
+            if not (league_obj and league_obj.allow_emergency_subs):
+                messages.error(request, "Emergency substitutes are not permitted in this league.")
+                return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+            if game.game_type != 'regular':
+                messages.error(request, "Emergency substitutes are strictly prohibited in playoff tournament games.")
+                return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+            sub_user_id = request.POST.get('sub_user_id')
+            consent_confirmed = bool(request.POST.get('consent_confirmed'))
+            if not consent_confirmed:
+                messages.warning(request, "You must certify that the opposing team's coach agreed to this emergency pickup player.")
+                return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
+            from users.models import CustomUser
+            sub_player = get_object_or_404(CustomUser, id=sub_user_id)
+            if not game.lineup_entries.filter(team=team, player=sub_player).exists():
+                max_order = game.lineup_entries.filter(team=team).aggregate(Max('batting_order'))['batting_order__max'] or 0
+                GameLineupEntry.objects.create(
+                    game=game,
+                    team=team,
+                    player=sub_player,
+                    batting_order=max_order + 1,
+                    field_position='EH',
+                    is_present=True,
+                    is_emergency_sub=True,
+                    sub_consented_by_opponent=True
+                )
+                messages.success(request, f"Added emergency substitute {sub_player.display_name} with opposing coach consent.")
+            return redirect('game_lineup_builder', game_id=game.id, team_id=team.id)
+
         elif action == 'save_lineup':
             entries = list(game.lineup_entries.filter(team=team).select_related('player'))
             for entry in entries:
@@ -1594,7 +1626,10 @@ def game_lineup_builder(request, game_id, team_id):
                     entry.batting_order = int(order_val)
                 entry.field_position = pos_val
                 entry.position_rotations = rotations
-                entry.is_present = present_val
+                # Hard lock: Ineligible or suspended players cannot be marked present
+                league_obj = game.season.league if (game.season and game.season.league) else None
+                eligible, _ = entry.player.is_eligible_to_play(league_obj)
+                entry.is_present = (present_val and eligible)
                 entry.save(update_fields=['batting_order', 'field_position', 'position_rotations', 'is_present'])
 
             messages.success(request, f"Saved batting order and defensive rotations for {team.name}!")
@@ -1607,9 +1642,16 @@ def game_lineup_builder(request, game_id, team_id):
     )
     rsvps = {r.player_id: r for r in game.rsvps.filter(player__in=team.players.all())}
     is_playoff = (game.game_type == 'playoff')
+    league_obj = game.season.league if (game.season and game.season.league) else None
     for e in entries:
         e.rsvp = rsvps.get(e.player_id)
         e.rotation_dict = e.position_rotations or {}
+        # Evaluate participant eligibility (suspensions, expulsions, minor waivers)
+        eligible, inelig_reason = e.player.is_eligible_to_play(league_obj)
+        e.is_eligible = eligible
+        e.ineligibility_reason = inelig_reason
+        if not eligible:
+            e.is_present = False
         if is_playoff:
             reg_appearances = GameLineupEntry.objects.filter(
                 player_id=e.player_id,
@@ -1683,6 +1725,10 @@ def game_lineup_builder(request, game_id, team_id):
         'coed_status': coed_status,
         'has_saved_default': has_saved_default,
         'is_playoff': is_playoff,
+        'allow_emergency_subs': bool(league_obj and league_obj.allow_emergency_subs),
+        'available_subs': (CustomUser.objects.filter(
+            Q(church=team.church) | Q(is_sub_available=True) | Q(is_free_agent=True)
+        ).exclude(id__in=[entry.player_id for entry in entries]).distinct()[:15]) if (league_obj and league_obj.allow_emergency_subs and not is_playoff) else [],
     })
 
 
@@ -2471,4 +2517,339 @@ def import_season_teams(request, season_id):
         'other_seasons': other_seasons,
         'source_season': source_season,
         'source_teams': source_teams,
+    })
+
+
+
+# =====================================================================
+# Phase 2: Disciplinary, Suspension & Incident Engine
+# =====================================================================
+
+@login_required
+def manage_disciplinary_hub(request, league_id):
+    """Commissioner and Committee interface to review incidents, issue suspensions, or ban participants."""
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied. Only League Commissioners can access Disciplinary Hub.")
+        return redirect('season_list', league_id=league.id)
+
+    records = PlayerDisciplinaryRecord.objects.filter(league=league).select_related('player', 'team', 'issued_by').order_by('-issued_at')
+    active_records = [r for r in records if r.is_currently_active()]
+    past_records = [r for r in records if not r.is_currently_active()]
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'create_disciplinary_record':
+            from users.models import CustomUser
+            player_id = request.POST.get('player_id')
+            team_id = request.POST.get('team_id') or None
+            penalty_type = request.POST.get('penalty_type', 'game_count')
+            reason = request.POST.get('reason', '').strip()
+            games_count = int(request.POST.get('games_suspended_total', 1) or 1)
+            suspended_until = request.POST.get('suspended_until') or None
+            dues_forfeited = bool(request.POST.get('dues_forfeited'))
+
+            player = get_object_or_404(CustomUser, id=player_id)
+            team = Team.objects.filter(id=team_id, league=league).first() if team_id else None
+
+            rec = PlayerDisciplinaryRecord.objects.create(
+                player=player,
+                league=league,
+                team=team,
+                penalty_type=penalty_type,
+                status='active',
+                games_suspended_total=games_count if penalty_type == 'game_count' else 0,
+                suspended_until=suspended_until if penalty_type == 'date_bound' else None,
+                dues_forfeited=dues_forfeited,
+                reason=reason,
+                issued_by=request.user
+            )
+
+            if penalty_type == 'permanent_expulsion':
+                player.is_expelled = True
+                player.expulsion_reason = reason
+                player.is_active = False
+                player.save(update_fields=['is_expelled', 'expulsion_reason', 'is_active'])
+                messages.warning(request, f"⛔ Participant {player.display_name} has been permanently expelled. Account deactivated.")
+            else:
+                messages.success(request, f"Recorded disciplinary action for {player.display_name}: {rec.get_penalty_type_display()}.")
+
+            # League-wide notification
+            if league.discord_webhook_url:
+                send_discord_notification(
+                    league.discord_webhook_url,
+                    f"⚖️ League Disciplinary Notice ({league.name}): {player.display_name} issued {rec.get_penalty_type_display()}. Rationale: {reason}"
+                )
+
+            return redirect('manage_disciplinary_hub', league_id=league.id)
+
+    # Participants eligible for discipline
+    from users.models import CustomUser
+    league_players = CustomUser.objects.filter(
+        Q(teams__league=league) | Q(season_registrations__season__league=league)
+    ).distinct().order_by('first_name', 'last_name')
+
+    return render(request, 'leagues/disciplinary_hub.html', {
+        'league': league,
+        'records': records,
+        'active_records': active_records,
+        'past_records': past_records,
+        'league_players': league_players,
+        'league_teams': league.teams.all(),
+    })
+
+
+@login_required
+@require_POST
+def reinstate_disciplinary_penalty(request, record_id):
+    """Allows commissioner to rescind/lift an active suspension early."""
+    record = get_object_or_404(PlayerDisciplinaryRecord.objects.select_related('league', 'player'), id=record_id)
+    league = record.league
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_disciplinary_hub', league_id=league.id)
+
+    notes = request.POST.get('reinstatement_notes', '').strip()
+    record.status = 'rescinded'
+    record.reinstated_at = timezone.now()
+    record.resolution_notes = f"{record.resolution_notes}\n[RESCINDED by {request.user.display_name}]: {notes or 'Early reinstatement approved.'}".strip()
+    record.save(update_fields=['status', 'reinstated_at', 'resolution_notes'])
+
+    # If player was marked expelled, re-activate account
+    if record.penalty_type == 'permanent_expulsion':
+        record.player.is_expelled = False
+        record.player.is_active = True
+        record.player.save(update_fields=['is_expelled', 'is_active'])
+
+    messages.success(request, f"✓ Lifted suspension for {record.player.display_name}. Player is reinstated.")
+    return redirect('manage_disciplinary_hub', league_id=league.id)
+
+
+@login_required
+@require_POST
+def report_game_incident(request, game_id):
+    """Allows assigned official, umpire, or coach to report game conduct or ejections."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1', 'team2'), id=game_id)
+    if not request.user.can_score_game(game):
+        messages.error(request, "Permission denied to report incident for this game.")
+        return redirect('game_detail', game_id=game.id)
+
+    from users.models import CustomUser
+    player_id = request.POST.get('player_id')
+    player = get_object_or_404(CustomUser, id=player_id)
+    incident_type = request.POST.get('incident_type', 'misconduct')
+    description = request.POST.get('description', '').strip()
+    is_ejection = bool(request.POST.get('is_ejection'))
+
+    team = game.team1 if player in game.team1.players.all() else game.team2
+
+    # Log in game audit trail
+    game.log_score_event(
+        request.user,
+        'incident_reported',
+        f"Incident: {player.display_name} ({'EJECTION' if is_ejection else incident_type}): {description}"
+    )
+
+    # If ejection, automatically create 1-game auto-suspension pending commissioner review
+    if is_ejection and game.season and game.season.league:
+        PlayerDisciplinaryRecord.objects.create(
+            player=player,
+            league=game.season.league,
+            team=team,
+            game=game,
+            penalty_type='game_count',
+            status='active',
+            games_suspended_total=1,
+            reason=f"Game Ejection: {description}",
+            issued_by=request.user
+        )
+        messages.warning(request, f"⚠️ Recorded ejection for {player.display_name}. 1-game suspension active pending committee review.")
+    else:
+        messages.info(request, f"Recorded conduct incident report for {player.display_name}.")
+
+    return redirect('game_detail', game_id=game.id)
+
+
+# =====================================================================
+# Phase 3: Venue Condition Hotline & 1-Click Relocation
+# =====================================================================
+
+@login_required
+@require_POST
+def update_venue_status(request, venue_id):
+    """Updates venue/field playability status (open, caution, closed, conflict, maintenance)."""
+    venue = get_object_or_404(LeagueVenue.objects.select_related('league'), id=venue_id)
+    league = venue.league
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied to update venue status.")
+        return redirect('manage_league_pools', league_id=league.id)
+
+    status = request.POST.get('status', 'open')
+    status_note = request.POST.get('status_note', '').strip()
+    venue.status = status
+    venue.status_note = status_note
+    venue.status_updated_by = request.user
+    venue.save(update_fields=['status', 'status_note', 'status_updated_at', 'status_updated_by'])
+
+    messages.success(request, f"Updated condition status for {venue.name}: {venue.get_status_display()}.")
+
+    # Broadcast on discord if unplayable or relocated
+    if status in ('closed', 'conflict') and league.discord_webhook_url:
+        send_discord_notification(
+            league.discord_webhook_url,
+            f"📢 Field Alert ({league.name}): {venue.name} is {venue.get_status_display().upper()}. {status_note}"
+        )
+
+    return redirect(request.META.get('HTTP_REFERER') or 'home')
+
+
+@login_required
+@require_POST
+def relocate_venue_games(request, venue_id):
+    """1-Click atomic game relocator: moves scheduled games from one field to another or postpones them."""
+    venue = get_object_or_404(LeagueVenue.objects.select_related('league'), id=venue_id)
+    league = venue.league
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('manage_league_pools', league_id=league.id)
+
+    action_type = request.POST.get('action_type', 'relocate')  # 'relocate' or 'postpone'
+    target_date_str = request.POST.get('target_date')  # YYYY-MM-DD
+    new_venue_id = request.POST.get('new_venue_id')
+    reason = request.POST.get('reason', '').strip()
+
+    games_qs = Game.objects.filter(
+        season__league=league,
+        status='scheduled'
+    ).filter(Q(venue=venue) | Q(location__icontains=venue.name))
+
+    if target_date_str:
+        try:
+            target_date = timezone.datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            games_qs = games_qs.filter(date__date=target_date)
+        except ValueError:
+            pass
+
+    games_list = list(games_qs)
+    if not games_list:
+        messages.warning(request, f"No scheduled games found at {venue.name} for the specified date.")
+        return redirect('manage_league_pools', league_id=league.id)
+
+    if action_type == 'relocate':
+        new_venue = get_object_or_404(LeagueVenue, id=new_venue_id, league=league)
+        for g in games_list:
+            g.venue = new_venue
+            g.location = new_venue.name
+            g.save(update_fields=['venue', 'location'])
+        messages.success(request, f"⚡ Successfully relocated {len(games_list)} game(s) from {venue.name} to {new_venue.name}.")
+        if league.discord_webhook_url:
+            send_discord_notification(
+                league.discord_webhook_url,
+                f"🚨 Field Relocation Alert: {len(games_list)} game(s) originally at {venue.name} moved to {new_venue.name}. Reason: {reason or 'Field conditions'}"
+            )
+    else:  # postpone
+        for g in games_list:
+            g.status = 'postponed'
+            g.notes = f"{g.notes}\n[POSTPONED]: {reason or 'Field closed due to weather/conflict'}".strip()
+            g.save(update_fields=['status', 'notes'])
+        messages.success(request, f"🌧️ Postponed {len(games_list)} game(s) at {venue.name}.")
+        if league.discord_webhook_url:
+            send_discord_notification(
+                league.discord_webhook_url,
+                f"🌧️ Weather Postponement: All games at {venue.name} postponed. Reason: {reason or 'Unplayable conditions'}"
+            )
+
+    return redirect('manage_league_pools', league_id=league.id)
+
+
+# =====================================================================
+# Phase 4 & 5: Sportsmanship & Season Renewal Evaluations
+# =====================================================================
+
+@login_required
+@require_POST
+def submit_sportsmanship_rating(request, game_id):
+    """Submits 1-5 star fellowship, referee respect, and bench decorum scores for a team."""
+    game = get_object_or_404(Game.objects.select_related('season__league', 'team1', 'team2'), id=game_id)
+    rated_team_id = request.POST.get('rated_team_id')
+    rated_team = get_object_or_404(Team, id=rated_team_id)
+
+    # Determine evaluator role
+    is_official = (
+        request.user.role == 'referee' or
+        hasattr(game, 'official_assignments') and game.official_assignments.filter(official=request.user).exists()
+    )
+    is_commish = request.user.is_overall_commissioner or (game.season and request.user.can_manage_league(game.season.league))
+    is_coach = (game.team1.captain_id == request.user.id or game.team2.captain_id == request.user.id)
+
+    if not (is_official or is_commish or is_coach):
+        messages.error(request, "Permission denied to evaluate sportsmanship for this match.")
+        return redirect('game_detail', game_id=game.id)
+
+    if is_official:
+        role = 'official'
+    elif is_commish:
+        role = 'commissioner'
+    else:
+        role = 'coach'
+
+    try:
+        score = max(1, min(5, int(request.POST.get('score', 5))))
+        respect = max(1, min(5, int(request.POST.get('respect_for_officials', 5))))
+        bench = max(1, min(5, int(request.POST.get('bench_conduct', 5))))
+    except (ValueError, TypeError):
+        score, respect, bench = 5, 5, 5
+
+    notes = request.POST.get('notes', '').strip()
+
+    rating, created = GameSportsmanshipRating.objects.update_or_create(
+        game=game,
+        evaluator=request.user,
+        rated_team=rated_team,
+        defaults={
+            'evaluator_role': role,
+            'score': score,
+            'respect_for_officials': respect,
+            'bench_conduct': bench,
+            'notes': notes,
+        }
+    )
+
+    messages.success(request, f"✓ Thank you! Sportsmanship rating ({score}★) recorded for {rated_team.name}.")
+    return redirect('game_detail', game_id=game.id)
+
+
+@login_required
+def manage_sportsmanship_dashboard(request, league_id):
+    """League Committee dashboard reviewing team fellowship scores and customizable renewal thresholds."""
+    league = get_object_or_404(League, id=league_id)
+    if not (request.user.is_overall_commissioner or request.user.can_manage_league(league)):
+        messages.error(request, "Permission denied.")
+        return redirect('season_list', league_id=league.id)
+
+    if request.method == 'POST' and 'update_thresholds' in request.POST:
+        try:
+            good_val = float(request.POST.get('sportsmanship_good_threshold', 4.0))
+            rev_val = float(request.POST.get('sportsmanship_review_threshold', 3.0))
+            league.sportsmanship_good_threshold = good_val
+            league.sportsmanship_review_threshold = rev_val
+            league.save(update_fields=['sportsmanship_good_threshold', 'sportsmanship_review_threshold'])
+            messages.success(request, f"✓ Updated league sportsmanship thresholds: Good Standing >= {good_val:.2f}, Review >= {rev_val:.2f}.")
+        except (ValueError, TypeError):
+            messages.error(request, "Invalid threshold values entered.")
+        return redirect('manage_sportsmanship_dashboard', league_id=league.id)
+
+    teams = league.teams.all().select_related('church', 'captain', 'season')
+    teams_summary = []
+    for t in teams:
+        summary = t.get_sportsmanship_summary()
+        summary['team'] = t
+        teams_summary.append(summary)
+
+    # Sort lowest scores first so problem teams are immediately visible to committee
+    teams_summary.sort(key=lambda s: (s['avg_score'], s['count']))
+
+    return render(request, 'leagues/sportsmanship_dashboard.html', {
+        'league': league,
+        'teams_summary': teams_summary,
     })

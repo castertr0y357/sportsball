@@ -10,8 +10,10 @@
             Manage certified venues, fields, and officials eligible for reuse across all past and future seasons.
         </p>
     </div>
-    <div style="display: flex; gap: 0.75rem;">
-        <a href="{% url 'season_list' league.id %}" class="btn btn-secondary">&larr; Seasons in this League</a>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="{% url 'manage_disciplinary_hub' league.id %}" class="btn btn-secondary">⚖️ Disciplinary Hub</a>
+        <a href="{% url 'manage_sportsmanship_dashboard' league.id %}" class="btn btn-secondary">🤝 Sportsmanship Dashboard</a>
+        <a href="{% url 'season_list' league.id %}" class="btn btn-secondary">&larr; Seasons</a>
     </div>
 </div>
 
@@ -44,6 +46,45 @@
             <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700;">Add Venue to Master Pool</button>
         </form>
 
+
+        <!-- 1-Click Field Relocation / Conflict Manager -->
+        <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px dashed var(--border);">
+            <details>
+                <summary style="font-size: 0.88rem; font-weight: 700; color: #0284c7; cursor: pointer;">
+                    ⚡ 1-Click Game Relocation &amp; Postponement Tool
+                </summary>
+                <form method="post" action="{% if venues.first %}{% url 'relocate_venue_games' venues.first.id %}{% endif %}" style="margin-top: 0.75rem; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 4px; padding: 0.85rem;">
+                    {% csrf_token %}
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 0.5rem;">
+                        Atomically move all games scheduled at a field on a specific date to another field or postpone them.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <div>
+                            <label style="font-size: 0.75rem; font-weight: 700;">Action:</label>
+                            <select name="action_type" class="form-control" style="width: 100%; font-size: 0.8rem; padding: 0.3rem;">
+                                <option value="relocate">Relocate Games to New Field</option>
+                                <option value="postpone">Postpone Games</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; font-weight: 700;">Target Date (Optional):</label>
+                            <input type="date" name="target_date" class="form-control" style="width: 100%; font-size: 0.8rem; padding: 0.3rem;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 0.5rem;">
+                        <label style="font-size: 0.75rem; font-weight: 700;">Relocate to Field:</label>
+                        <select name="new_venue_id" class="form-control" style="width: 100%; font-size: 0.8rem; padding: 0.3rem;">
+                            {% for v in venues %}
+                                <option value="{{ v.id }}">{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700;">
+                        Apply &amp; Broadcast Alert
+                    </button>
+                </form>
+            </details>
+        </div>
         <!-- Venues List -->
         {% if venues %}
             <div class="table-responsive">
@@ -64,11 +105,34 @@
                                 {% if v.notes %}<div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">{{ v.notes }}</div>{% endif %}
                             </td>
                             <td>
-                                {% if v.is_active %}
-                                    <span style="color: #16a34a; font-weight: 700; font-size: 0.85rem;">Active</span>
-                                {% else %}
-                                    <span style="color: #dc2626; font-weight: 700; font-size: 0.85rem;">Inactive</span>
-                                {% endif %}
+                                <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                    {% if v.status == 'open' %}
+                                        <span class="badge" style="background:#16a34a; color:#fff; font-size:0.75rem; width:fit-content;">🟢 Open</span>
+                                    {% elif v.status == 'caution' %}
+                                        <span class="badge" style="background:#d97706; color:#fff; font-size:0.75rem; width:fit-content;">🟡 Caution</span>
+                                    {% elif v.status == 'closed' %}
+                                        <span class="badge" style="background:#dc2626; color:#fff; font-size:0.75rem; width:fit-content;">🔴 Closed</span>
+                                    {% elif v.status == 'conflict' %}
+                                        <span class="badge" style="background:#9333ea; color:#fff; font-size:0.75rem; width:fit-content;">⚠️ Relocated</span>
+                                    {% else %}
+                                        <span class="badge" style="background:#64748b; color:#fff; font-size:0.75rem; width:fit-content;">🔧 Maintenance</span>
+                                    {% endif %}
+                                    {% if v.status_note %}
+                                        <div style="font-size: 0.72rem; color: var(--text-muted); font-style: italic;">"{{ v.status_note }}"</div>
+                                    {% endif %}
+
+                                    <!-- Quick Status Toggle Form -->
+                                    <form method="post" action="{% url 'update_venue_status' v.id %}" style="margin: 0.2rem 0 0; display: flex; gap: 0.25rem;">
+                                        {% csrf_token %}
+                                        <select name="status" class="form-control" style="font-size: 0.75rem; padding: 0.2rem;" onchange="this.form.submit()">
+                                            <option value="open" {% if v.status == 'open' %}selected{% endif %}>🟢 Set Open</option>
+                                            <option value="caution" {% if v.status == 'caution' %}selected{% endif %}>🟡 Set Caution</option>
+                                            <option value="closed" {% if v.status == 'closed' %}selected{% endif %}>🔴 Set Closed</option>
+                                            <option value="conflict" {% if v.status == 'conflict' %}selected{% endif %}>⚠️ Set Conflict</option>
+                                            <option value="maintenance" {% if v.status == 'maintenance' %}selected{% endif %}>🔧 Maintenance</option>
+                                        </select>
+                                    </form>
+                                </div>
                             </td>
                             <td style="text-align: right; white-space: nowrap;">
                                 <form method="post" action="{% url 'toggle_league_venue' league.id v.id %}" style="display: inline;">

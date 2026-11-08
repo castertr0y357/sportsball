@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}Sportsmanship &amp; Season Renewal Dashboard &bull; {{ league.name }} &bull; SportsBall{% endblock %}
+
+{% block content %}
+<div class="header-action-row" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.85rem; font-weight: 800;">🤝 Christian Fellowship &amp; Sportsmanship Dashboard</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted);">
+            Season renewal evaluations, official referee reviews, and conduct metrics for <strong>{{ league.name }}</strong>.
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="{% url 'manage_disciplinary_hub' league.id %}" class="btn btn-secondary">⚖️ Disciplinary Hub</a>
+        <a href="{% url 'manage_league_pools' league.id %}" class="btn btn-secondary">🏟️ Master Pools</a>
+        <a href="{% url 'season_list' league.id %}" class="btn btn-secondary">&larr; Seasons</a>
+    </div>
+</div>
+
+<!-- Thresholds Configuration Form -->
+<div class="admin-card" style="margin-bottom: 1.5rem; background: var(--surface-alt); border: 1px solid var(--border);">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h3 style="margin: 0; font-size: 1.05rem;">⚙️ League Standards &amp; Renewal Thresholds</h3>
+            <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                Tune standard review cutoffs to reflect your committee's expectations for church team franchise renewals.
+            </p>
+        </div>
+        <form method="post" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0;">
+            {% csrf_token %}
+            <input type="hidden" name="update_thresholds" value="1">
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <label style="font-size: 0.82rem; font-weight: 700;">🟢 Good Standing &ge;</label>
+                <input type="number" step="0.05" min="1.0" max="5.0" name="sportsmanship_good_threshold"
+                    value="{{ league.sportsmanship_good_threshold }}" class="form-control" style="width: 75px; padding: 0.35rem; font-weight: 700;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <label style="font-size: 0.82rem; font-weight: 700;">🟡 Review Cutoff &ge;</label>
+                <input type="number" step="0.05" min="1.0" max="5.0" name="sportsmanship_review_threshold"
+                    value="{{ league.sportsmanship_review_threshold }}" class="form-control" style="width: 75px; padding: 0.35rem; font-weight: 700;">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700;">Update Standards</button>
+        </form>
+    </div>
+</div>
+
+<!-- Team Standings Table -->
+<div class="admin-card">
+    <div class="admin-card-header">
+        <h2 class="admin-card-title">🏆 Team Fellowship &amp; Re-Invitation Standing</h2>
+        <span class="badge" style="background: var(--surface-alt); border: 1px solid var(--border); font-size: 0.8rem;">
+            {{ teams_summary|length }} Teams Monitored
+        </span>
+    </div>
+
+    {% if teams_summary %}
+        <div class="table-responsive">
+            <table class="table" style="font-size: 0.9rem;">
+                <thead>
+                    <tr>
+                        <th>Team / Church</th>
+                        <th style="text-align: center;">Overall Fellowship</th>
+                        <th style="text-align: center;">Official Respect</th>
+                        <th style="text-align: center;">Bench Decorum</th>
+                        <th style="text-align: center;">Evaluations</th>
+                        <th style="text-align: right;">Season Renewal Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in teams_summary %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.team.name }}</strong>
+                            {% if item.team.church %}
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">{{ item.team.church.name }}</div>
+                            {% endif %}
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">Season: {{ item.team.season.name }}</div>
+                        </td>
+                        <td style="text-align: center;">
+                            <span style="font-weight: 800; font-size: 1.1rem; color: {% if item.status == 'good' %}#16a34a{% elif item.status == 'review' %}#d97706{% else %}#dc2626{% endif %};">
+                                {{ item.avg_score }} ★
+                            </span>
+                        </td>
+                        <td style="text-align: center; font-size: 0.88rem;">{{ item.avg_respect }} / 5</td>
+                        <td style="text-align: center; font-size: 0.88rem;">{{ item.avg_bench }} / 5</td>
+                        <td style="text-align: center;">
+                            <span class="badge" style="font-size: 0.75rem; background: var(--surface-alt);">{{ item.count }} review{{ item.count|pluralize }}</span>
+                        </td>
+                        <td style="text-align: right;">
+                            {% if item.status == 'good' %}
+                                <span class="badge" style="background: rgba(22,163,74,0.12); color: #16a34a; border: 1px solid #16a34a; font-weight: 700; padding: 0.35rem 0.6rem;">
+                                    🟢 {{ item.status_label }}
+                                </span>
+                            {% elif item.status == 'review' %}
+                                <span class="badge" style="background: rgba(217,119,6,0.12); color: #d97706; border: 1px solid #d97706; font-weight: 700; padding: 0.35rem 0.6rem;">
+                                    🟡 {{ item.status_label }}
+                                </span>
+                            {% else %}
+                                <span class="badge" style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid #dc2626; font-weight: 700; padding: 0.35rem 0.6rem;">
+                                    🔴 {{ item.status_label }}
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin: 0;">No teams registered in this league yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

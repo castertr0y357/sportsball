@@ -48,6 +48,26 @@ class CustomUser(AbstractUser):
     waiver_signed_at = models.DateTimeField(null=True, blank=True)
     waiver_signature = models.CharField(max_length=150, blank=True)
 
+    # Minor / Youth Safeguards & Parental Guardian Consent
+    birthdate = models.DateField(null=True, blank=True, help_text="Birthdate to verify youth/minor eligibility")
+    parent_guardian = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='minor_dependents',
+        help_text="Registered parent/guardian account if participant is a minor"
+    )
+    parent_guardian_name = models.CharField(max_length=150, blank=True, help_text="Full legal name of parent or legal guardian")
+    parent_guardian_phone = models.CharField(max_length=30, blank=True, help_text="Parent or guardian emergency contact phone")
+    parent_signed_waiver = models.BooleanField(default=False, help_text="Parent/guardian digital liability covenant signature")
+    parent_waiver_signed_at = models.DateTimeField(null=True, blank=True)
+    parent_waiver_signature = models.CharField(max_length=150, blank=True)
+
+    # Disciplinary & Permanent Expulsion
+    is_expelled = models.BooleanField(default=False, help_text="Permanent league ban / expulsion")
+    expulsion_reason = models.TextField(blank=True, help_text="Official rationale recorded by league committee")
+
     # Walk-up song fields for Softball / Baseball
     walkup_song_title = models.CharField(
         max_length=150,
@@ -75,6 +95,44 @@ class CustomUser(AbstractUser):
         self.waiver_signed_at = timezone.now()
         self.waiver_signature = signature_name
         self.save(update_fields=['waiver_signed', 'waiver_signed_at', 'waiver_signature'])
+
+    def sign_parental_waiver(self, signature_name: str, phone: str = '', name: str = ''):
+        self.parent_signed_waiver = True
+        self.parent_waiver_signed_at = timezone.now()
+        self.parent_waiver_signature = signature_name
+        if phone:
+            self.parent_guardian_phone = phone
+        if name:
+            self.parent_guardian_name = name
+        self.save(update_fields=['parent_signed_waiver', 'parent_waiver_signed_at', 'parent_waiver_signature', 'parent_guardian_phone', 'parent_guardian_name'])
+
+    @property
+    def is_minor(self):
+        if not self.birthdate:
+            return False
+        today = timezone.localdate()
+        age = today.year - self.birthdate.year - ((today.month, today.day) < (self.birthdate.month, self.birthdate.day))
+        return age < 18
+
+    def is_eligible_to_play(self, league=None):
+        if self.is_expelled or not self.is_active:
+            return False, f"Permanently expelled from league: {self.expulsion_reason or 'Conduct violation'}"
+        if league:
+            if hasattr(self, 'disciplinary_records'):
+                active_penalties = self.disciplinary_records.filter(league=league, status='active')
+                for rec in active_penalties:
+                    if rec.is_currently_active():
+                        if rec.penalty_type == 'game_count':
+                            return False, f"Suspended ({rec.remaining_games()} game(s) remaining)"
+                        elif rec.penalty_type == 'date_bound':
+                            return False, f"Suspended through {rec.suspended_until.strftime('%b %d, %Y')}"
+                        elif rec.penalty_type == 'permanent_expulsion':
+                            return False, "Expelled by League Committee"
+            if self.is_minor and not getattr(league, 'allow_minors', False):
+                return False, "Minors are not permitted in this league"
+            if self.is_minor and getattr(league, 'allow_minors', False) and not self.parent_signed_waiver:
+                return False, "Minor player waiver requires parent/guardian signature"
+        return True, "Eligible"
 
     @property
     def is_overall_commissioner(self):

@@ -157,6 +157,34 @@ def sign_waiver(request):
 
 
 @login_required
+def sign_parental_waiver_view(request, minor_id):
+    minor = get_object_or_404(CustomUser, id=minor_id)
+    can_sign = (
+        request.user.is_overall_commissioner or
+        request.user.id == minor.parent_guardian_id or
+        request.user.can_manage_church(minor.church)
+    )
+    if not can_sign:
+        messages.error(request, "Permission denied to sign parental waiver for this participant.")
+        return redirect('profile')
+
+    if request.method == 'POST':
+        sig = request.POST.get('parent_signature', '').strip()
+        phone = request.POST.get('parent_phone', '').strip()
+        name = request.POST.get('parent_name', '').strip() or request.user.display_name
+        if sig:
+            minor.sign_parental_waiver(signature_name=sig, phone=phone, name=name)
+            messages.success(request, f"✓ Parental consent and liability waiver recorded for {minor.display_name}!")
+            return redirect('player_detail', user_id=minor.id)
+        else:
+            messages.error(request, "Electronic signature is required to certify parental consent.")
+
+    return render(request, 'users/sign_parental_waiver.html', {
+        'minor': minor,
+    })
+
+
+@login_required
 def free_agent_list(request):
     if not request.user.can_manage_teams:
         messages.info(request, "The Free Agent directory is reserved for team coaches and league leaders looking to recruit players.")

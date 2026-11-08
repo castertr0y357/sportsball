@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Parent / Guardian Consent Waiver | SportsBall{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:680px; margin:2rem auto; padding:2rem;">
+    <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+        <span style="font-size:2rem;">🛡️</span>
+        <div>
+            <h1 style="margin:0; font-size:1.5rem;">Minor Liability Waiver &amp; Parental Consent</h1>
+            <p style="margin:0.25rem 0 0; color:var(--text-muted); font-size:0.9rem;">
+                Official parent/guardian consent for <strong>{{ minor.display_name }}</strong>
+            </p>
+        </div>
+    </div>
+
+    <div class="alert alert-warning" style="margin-bottom:1.5rem;">
+        <p style="margin:0 0 0.65rem;">
+            <strong>1. Minor Participation Authorization:</strong> As the legal parent or guardian of <strong>{{ minor.display_name }}</strong>, I grant permission for them to participate in official church league games and activities alongside our participating congregation.
+        </p>
+        <p style="margin:0 0 0.65rem;">
+            <strong>2. Christian Fellowship &amp; Sportsmanship:</strong> I affirm that my minor dependent will uphold Christlike sportsmanship, show deference to referees and officials, and engage in joyful fellowship.
+        </p>
+        <p style="margin:0;">
+            <strong>3. Medical Authorization &amp; Liability Release:</strong> I release participating host churches and the league committee from civil injury liability and authorize emergency medical treatment in the event I cannot be reached.
+        </p>
+    </div>
+
+    <form method="post" style="display:flex; flex-direction:column; gap:1.25rem;">
+        {% csrf_token %}
+        <div>
+            <label style="display:block; font-weight:700; font-size:0.88rem; margin-bottom:0.35rem;">
+                Parent / Guardian Full Legal Name:
+            </label>
+            <input type="text" name="parent_name" class="input" required
+                value="{{ request.user.display_name }}"
+                placeholder="e.g. David Jenkins (Father / Guardian)">
+        </div>
+
+        <div>
+            <label style="display:block; font-weight:700; font-size:0.88rem; margin-bottom:0.35rem;">
+                Emergency Contact Phone Number:
+            </label>
+            <input type="tel" name="parent_phone" class="input" required
+                value="{{ request.user.phone|default:minor.parent_guardian_phone }}"
+                placeholder="e.g. (555) 345-6789">
+        </div>
+
+        <div>
+            <label style="display:block; font-weight:700; font-size:0.88rem; margin-bottom:0.35rem;">
+                Electronic Signature (Type Full Legal Name):
+            </label>
+            <input type="text" name="parent_signature" class="input" required
+                placeholder="Type your full legal name to execute this binding consent">
+        </div>
+
+        <div style="display:flex; gap:0.75rem; align-items:center; margin-top:0.5rem;">
+            <button type="submit" class="btn btn-accent" style="font-weight:700;">
+                ✓ Execute Parental Consent &amp; Certify Waiver
+            </button>
+            <a href="{% url 'player_detail' minor.id %}" class="btn btn-secondary">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

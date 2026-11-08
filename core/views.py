@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import Church, Announcement
 from .forms import ChurchForm, AnnouncementForm
-from leagues.models import League, Season, Game, Team, GameOfficialAssignment
+from leagues.models import League, Season, Game, Team, GameOfficialAssignment, LeagueVenue
 from users.models import CustomUser
 from core.services.notifications import send_discord_notification, send_twilio_sms
 
@@ -203,6 +203,7 @@ def home(request):
         'open_sub_assignments': open_sub_assignments,
         'pending_score_confirmations': pending_score_confirmations,
         'executive_stats': executive_stats,
+        'active_venues': LeagueVenue.objects.filter(is_active=True).select_related('league')[:8],
     })
 
 
