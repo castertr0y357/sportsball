@@ -40,19 +40,7 @@
             ☀️ Sun Mode
         </button>
 
-        <!-- Rule Protest Button -->
-        <button type="button" class="btn btn-sm btn-secondary" onclick="openDisputeModal()" title="Flag Rule Interpretation Dispute">
-            ⚖️ Protest
-        </button>
 
-        <!-- Forfeit Button -->
-        <button type="button" class="btn btn-sm btn-secondary" onclick="openForfeitModal()" title="Record Official Forfeit">
-            🏁 Forfeit
-        </button>
-
-        <button type="button" id="btn-precache" class="btn btn-sm btn-accent" onclick="precacheGameForOffline()">
-            &#128229; Cache Audio
-        </button>
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary btn-sm" target="_blank">Public GameCast &nearr;</a>
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary btn-sm">&larr; Box Score</a>
     </div>
@@ -105,6 +93,9 @@
         <span id="conn-indicator" class="badge badge-success">&#9679; Online Mode</span>
         <span id="cache-indicator" class="badge">Checking offline audio...</span>
         <span id="queue-indicator" class="badge badge-primary" style="display:none;">0 actions pending sync</span>
+        <button type="button" id="btn-precache" class="btn btn-sm btn-secondary" onclick="precacheGameForOffline()" style="font-size:0.75rem; padding:0.2rem 0.5rem;" title="Pre-download walk-up songs for offline use">
+            📥 Pre-Cache Audio
+        </button>
     </div>
     <div>
         <button type="button" id="btn-sync-now" class="btn btn-sm btn-secondary" onclick="flushOfflineQueue()" style="display:none;">
@@ -356,6 +347,12 @@
                 </button>
                 <button type="button" class="btn btn-sm btn-secondary" onclick="sendAction('mark_final')">
                     Mark Game Completed / Final
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="openDisputeModal()" title="Flag Rule Interpretation Dispute">
+                    ⚖️ Protest Rule
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="openForfeitModal()" title="Record Official Forfeit">
+                    🏁 Record Forfeit
                 </button>
             </div>
         </div>

@@ -79,10 +79,10 @@
                             <a href="{% url 'sign_waiver' %}" class="dropdown-item" role="menuitem">
                                 <span class="dropdown-icon">&#9997;</span> Liability Waiver &amp; Covenant
                             </a>
+                            {% if user.is_superuser %}
                             <a href="{% url 'test_users_portal' %}" class="dropdown-item" role="menuitem">
                                 <span class="dropdown-icon">&#9881;</span> Testing Sandbox (Switch Role)
                             </a>
-                            {% if user.is_superuser %}
                             <a href="{% url 'system_admin_dashboard' %}" class="dropdown-item" role="menuitem" style="color:var(--primary); font-weight:600;">
                                 <span class="dropdown-icon">&#128736;&#65039;</span> System Control Console
                             </a>
