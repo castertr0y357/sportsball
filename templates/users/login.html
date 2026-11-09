@@ -2,7 +2,7 @@
 {% block title %}Log In | SportsBall{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:450px; margin:2rem auto; text-align:center;">
+<div class="card" style="max-width:520px; margin:2rem auto; text-align:center;">
     <h1 style="margin-bottom:0.25rem;">&#9918; SportsBall</h1>
     <p style="color:var(--text-muted); font-size:0.95rem; margin-top:0; margin-bottom:1.5rem;" id="login-tagline">
         Because running a league shouldn't require a master's degree.
@@ -20,21 +20,46 @@
     </p>
 
     <!-- Quick Local Testing Shortcut Box -->
-    <details style="margin-top:1.5rem; text-align:left; background:var(--surface-alt); padding:0.75rem 1rem; border-radius:var(--radius); font-size:0.85rem; border:1px solid var(--border);">
+    <details style="margin-top:1.5rem; text-align:left; background:var(--surface-alt); padding:0.85rem 1rem; border-radius:var(--radius); font-size:0.85rem; border:1px solid var(--border);">
         <summary style="font-weight:700; cursor:pointer; color:var(--text);">
             🧪 Quick Test Accounts (Password: <code>sportsball123</code>)
         </summary>
-        <ul style="margin:0.5rem 0 0; padding-left:1.2rem; line-height:1.6;">
-            <li><strong>Commissioner / Admin:</strong> <code>commissioner@sportsball.local</code></li>
-            <li><strong>Coach (Grace Sluggers):</strong> <code>coach.grace@sportsball.local</code></li>
-            <li><strong>Coach (Calvary Crusaders):</strong> <code>coach.calvary@sportsball.local</code></li>
-            <li><strong>Umpire / Referee:</strong> <code>umpire.bob@sportsball.local</code></li>
-            <li><strong>Rostered Player:</strong> <code>player.josh@sportsball.local</code></li>
-            <li><strong>Free Agent (Looking for Team):</strong> <code>freeagent.eli@sportsball.local</code></li>
-            <li><strong>Unsigned Waiver Test:</strong> <code>unverified@sportsball.local</code></li>
-        </ul>
-        <small style="color:var(--text-muted); display:block; margin-top:0.4rem;">
-            Run <code>python manage.py create_test_users</code> anytime to re-seed test credentials.
+        <div style="margin-top:0.6rem; font-size:0.82rem; line-height:1.5;">
+            <div style="font-weight:700; color:var(--primary); margin-top:0.3rem;">👑 League Commissioners:</div>
+            <ul style="margin:0.2rem 0; padding-left:1.2rem;">
+                <li><strong>Overall:</strong> <code>commissioner@sportsball.local</code></li>
+                <li><strong>Softball:</strong> <code>commish.softball@sportsball.local</code></li>
+                <li><strong>Basketball:</strong> <code>commish.basketball@sportsball.local</code></li>
+                <li><strong>Football:</strong> <code>commish.football@sportsball.local</code></li>
+            </ul>
+
+            <div style="font-weight:700; color:var(--primary); margin-top:0.5rem;">🧢 Coaches (12 Teams):</div>
+            <ul style="margin:0.2rem 0; padding-left:1.2rem;">
+                <li><strong>Softball (Grace):</strong> <code>coach.sluggers@sportsball.local</code>, <code>coach.overcomers@sportsball.local</code>, <code>coach.glory@sportsball.local</code></li>
+                <li><strong>Softball (Calvary):</strong> <code>coach.crusaders@sportsball.local</code>, <code>coach.lions@sportsball.local</code></li>
+                <li><strong>Softball (Fire Dept):</strong> <code>coach.fire@sportsball.local</code></li>
+                <li><strong>Basketball (Redeemer):</strong> <code>coach.royals@sportsball.local</code>, <code>coach.thunder@sportsball.local</code>, <code>coach.covenant@sportsball.local</code></li>
+                <li><strong>Flag Football (Hope):</strong> <code>coach.warriors@sportsball.local</code>, <code>coach.ironmen@sportsball.local</code>, <code>coach.defenders@sportsball.local</code></li>
+            </ul>
+
+            <div style="font-weight:700; color:var(--primary); margin-top:0.5rem;">🏃 Featured Players (1 per Team):</div>
+            <ul style="margin:0.2rem 0; padding-left:1.2rem;">
+                <li><strong>Softball (Grace):</strong> <code>player.sluggers@sportsball.local</code>, <code>player.overcomers@sportsball.local</code>, <code>player.glory@sportsball.local</code></li>
+                <li><strong>Softball (Calvary):</strong> <code>player.crusaders@sportsball.local</code>, <code>player.lions@sportsball.local</code></li>
+                <li><strong>Softball (Fire Dept):</strong> <code>player.fire@sportsball.local</code></li>
+                <li><strong>Basketball (Redeemer):</strong> <code>player.royals@sportsball.local</code>, <code>player.thunder@sportsball.local</code>, <code>player.covenant@sportsball.local</code></li>
+                <li><strong>Flag Football (Hope):</strong> <code>player.warriors@sportsball.local</code>, <code>player.ironmen@sportsball.local</code>, <code>player.defenders@sportsball.local</code></li>
+            </ul>
+
+            <div style="font-weight:700; color:var(--primary); margin-top:0.5rem;">⚖️ Officials &amp; Edge Cases:</div>
+            <ul style="margin:0.2rem 0; padding-left:1.2rem;">
+                <li><strong>Umpire / Referee:</strong> <code>umpire.bob@sportsball.local</code></li>
+                <li><strong>Free Agent:</strong> <code>freeagent.eli@sportsball.local</code></li>
+                <li><strong>Unsigned Waiver:</strong> <code>unverified@sportsball.local</code></li>
+            </ul>
+        </div>
+        <small style="color:var(--text-muted); display:block; margin-top:0.5rem;">
+            Run <code>python manage.py seed_demo_data</code> anytime to reset all demo rosters.
         </small>
     </details>
     <p style="margin-top:0.75rem; font-size:0.85rem;">
