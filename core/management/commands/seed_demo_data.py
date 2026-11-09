@@ -741,7 +741,10 @@ class Command(BaseCommand):
                 week_number=1,
             )
 
-        # 8. Run create_test_users to guarantee full sync and linking
+        # 8. Seed Voice Packs & Soundboard Effects
+        call_command('seed_voice_packs')
+
+        # 9. Run create_test_users to guarantee full sync and linking
         call_command('create_test_users')
 
         self.stdout.write(self.style.SUCCESS(

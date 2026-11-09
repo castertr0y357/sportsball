@@ -493,8 +493,20 @@ function renderState(state) {
         if (undoPad) undoPad.style.opacity = '0.5';
     }
 
+    // Handle situational play announcement commentary (Uecker / Madden / NBA Jam)
+    if (state.announcement && window.DugoutSoundboard) {
+        window.DugoutSoundboard.handlePlayAnnouncement(state.announcement);
+    }
+
+    // Handle batter introduction PA announcement chained into walk-up track
     if (state.trigger_walkup && document.getElementById('auto-walkup-toggle').checked) {
-        playCurrentWalkup();
+        if (window.DugoutSoundboard && state.batter_intro) {
+            window.DugoutSoundboard.handleBatterSequence(state.batter_intro, () => {
+                playCurrentWalkup();
+            });
+        } else {
+            playCurrentWalkup();
+        }
     }
 }
 

@@ -196,3 +196,10 @@ update_venue_status = UpdateVenueStatusView.as_view()
 relocate_venue_games = RelocateVenueGamesView.as_view()
 submit_sportsmanship_rating = SubmitSportsmanshipRatingView.as_view()
 manage_sportsmanship_dashboard = ManageSportsmanshipDashboardView.as_view()
+
+# Voice Pack & Soundboard Administration views
+from leagues.views.voice_views import (
+    VoicePackListView,
+    VoicePackUploadZipView,
+    ToggleVoicePackDefaultView,
+)

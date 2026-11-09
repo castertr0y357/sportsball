@@ -40,9 +40,65 @@
             ☀️ Sun Mode
         </button>
 
+        <!-- Press Box Soundboard Drawer Toggle -->
+        <button type="button" id="btn-soundboard-toggle" class="btn btn-sm" style="background:#7c3aed; color:#fff; font-weight:700;" onclick="window.DugoutSoundboard && window.DugoutSoundboard.toggleSoundboardDrawer()" title="Open Press Box Soundboard & Stadium PA Audio">
+            📻 Soundboard FX
+        </button>
+
 
         <a href="{% url 'gamecast' game.id %}" class="btn btn-secondary btn-sm" target="_blank">Public GameCast &nearr;</a>
         <a href="{% url 'game_detail' game.id %}" class="btn btn-secondary btn-sm">&larr; Box Score</a>
+    </div>
+</div>
+
+<!-- Press Box Soundboard & Stadium PA Drawer -->
+<div id="soundboardDrawer" style="display:none; background:var(--surface); border:2px solid #7c3aed; border-radius:12px; padding:1.25rem; margin-bottom:1.25rem; box-shadow:0 8px 24px rgba(124,58,237,0.18);">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span style="font-size:1.6rem;">📻</span>
+            <div>
+                <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--text);">Press Box Soundboard &amp; Stadium PA</h3>
+                <small style="color:var(--text-muted);">
+                    Active Announcer: <strong>{{ voice_pack.name|default:"Bob Uecker (Major League Edition)" }}</strong> &bull; Direct Bluetooth Broadcast
+                </small>
+            </div>
+        </div>
+        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+            <label style="font-size:0.84rem; display:flex; align-items:center; gap:0.35rem; cursor:pointer; color:var(--text); font-weight:600;">
+                <input type="checkbox" id="chk-commentary-enabled" onchange="window.DugoutSoundboard && window.DugoutSoundboard.setCommentaryEnabled(this.checked)">
+                <span>🎙️ Comedy Commentary (Uecker/Madden)</span>
+            </label>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="window.DugoutSoundboard && window.DugoutSoundboard.toggleSoundboardDrawer()">&times; Close Drawer</button>
+        </div>
+    </div>
+
+    <!-- Category Grids -->
+    <div class="grid grid-2" style="gap:1rem; margin-bottom:1rem;">
+        <!-- Chaos & Comedy -->
+        <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-weight:700; font-size:0.9rem; color:#d97706; margin-bottom:0.6rem;">🎷 Chaos &amp; Comedy (The Pickle Button)</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;" id="soundboard-chaos-buttons">
+                <!-- Buttons rendered dynamically -->
+            </div>
+        </div>
+
+        <!-- Ballpark Rally & Celebration -->
+        <div style="background:var(--surface-alt); padding:0.85rem; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-weight:700; font-size:0.9rem; color:#2563eb; margin-bottom:0.6rem;">🎺 Rally, Organ &amp; Celebration</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;" id="soundboard-rally-buttons">
+                <!-- Buttons rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Emergency Killswitch Bar -->
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; background:#fee2e2; border:1px solid #fca5a5; padding:0.65rem 1rem; border-radius:8px; flex-wrap:wrap;">
+        <span style="font-size:0.85rem; font-weight:700; color:#991b1b;">
+            ⚠️ Emergency Killswitch (Umpire timeout, injury, or play conclusion):
+        </span>
+        <button type="button" class="btn btn-sm" style="background:#dc2626; color:#fff; font-weight:800; padding:0.4rem 1.25rem;" onclick="window.DugoutSoundboard && window.DugoutSoundboard.stopAllAudio()">
+            🛑 STOP ALL AUDIO (Mute Speaker)
+        </button>
     </div>
 </div>
 
@@ -218,10 +274,13 @@
             </button>
             {% endif %}
         </div>
-        <div style="margin-top:0.65rem; font-size:0.84rem; color:#94a3b8;">
-            On Deck: <strong style="color:#e2e8f0;" id="on-deck-batter-name">--</strong>
+        <div style="margin-top:0.65rem; font-size:0.84rem; color:#94a3b8; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+            <div>On Deck: <strong style="color:#e2e8f0;" id="on-deck-batter-name">--</strong></div>
+            <span id="announcer-active-badge" class="badge badge-success" style="display:none; font-size:0.75rem;">🎙️ Announcing...</span>
         </div>
+        <audio id="dugout-announcer-audio" preload="auto"></audio>
         <audio id="dugout-walkup-audio" preload="auto"></audio>
+        <audio id="dugout-soundboard-audio" preload="auto"></audio>
     </div>
 </div>
 
@@ -502,7 +561,9 @@ let gameState = {
     play_by_play: []
 };
 
+window.SOUNDBOARD_EFFECTS = {{ soundboard_effects_json|safe|default:"[]" }};
 </script>
+<script src="{% static 'js/pages/dugout_soundboard.js' %}"></script>
 <script src="{% static 'js/pages/dugout.js' %}"></script>
 {% endblock %}
 {% endblock %}

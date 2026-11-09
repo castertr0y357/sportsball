@@ -32,6 +32,14 @@ class Game(models.Model):
     ]
 
     season = models.ForeignKey('Season', on_delete=models.CASCADE, related_name='games', null=True, blank=True)
+    voice_pack = models.ForeignKey(
+        'leagues.VoicePack',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='games',
+        help_text="Custom announcer voice pack for this game (overrides league default)"
+    )
     venue = models.ForeignKey('LeagueVenue', on_delete=models.SET_NULL, null=True, blank=True, related_name='scheduled_games')
     team1 = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='games_as_team1', verbose_name="Home Team")
     team2 = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='games_as_team2', verbose_name="Away Team")
@@ -193,6 +201,18 @@ class Game(models.Model):
                         is_present=True,
                     )
         self.sync_shorthanded_automatic_outs()
+
+    def get_effective_voice_pack(self):
+        """
+        Resolves effective announcer voice pack: game override -> league default -> sport default.
+        """
+        from .voice_announcer import VoicePack
+        if self.voice_pack and self.voice_pack.is_active:
+            return self.voice_pack
+        if self.season and self.season.league and self.season.league.voice_pack and self.season.league.voice_pack.is_active:
+            return self.season.league.voice_pack
+        sport = self.season.league.sport if (self.season and self.season.league) else 'softball'
+        return VoicePack.objects.filter(sport=sport, is_default=True, is_active=True).first() or VoicePack.objects.filter(is_default=True, is_active=True).first()
 
     def get_active_lineup(self, team):
         """Return ordered GameLineupEntry queryset of present players for a team."""

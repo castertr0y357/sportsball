@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Voice Packs &amp; Stadium Soundboard | SportsBall{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <span class="badge badge-accent">Audio Production Suite</span>
+        <h1>Stadium Voice Packs &amp; Press Box Soundboard</h1>
+        <p style="margin:0.25rem 0 0; color:var(--text-muted);">
+            Manage multi-sport PA announcer personas (Bob Uecker, NBA Jam, John Madden) and instant ballpark chaos soundboard effects.
+        </p>
+    </div>
+    <div>
+        <a href="{% url 'system_admin_dashboard' %}" class="btn btn-secondary btn-sm">&larr; System Admin</a>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom:2rem; gap:1.5rem;">
+    <!-- Active Voice Packs by Sport -->
+    <div>
+        <h2>🎙️ Multi-Sport Announcer Packs</h2>
+        <div style="display:grid; gap:1rem;">
+            {% for pack in voice_packs %}
+                <div class="card" style="margin:0; border-left: 4px solid {% if pack.is_default %}#10b981{% else %}#64748b{% endif %};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
+                        <div>
+                            <h3 style="margin:0; font-size:1.15rem;">
+                                {{ pack.name }}
+                                {% if pack.is_default %}
+                                    <span class="badge badge-success">Default for {{ pack.sport|title }}</span>
+                                {% endif %}
+                            </h3>
+                            <small style="color:var(--text-muted);">
+                                Sport: <strong>{{ pack.sport|title }}</strong> &bull; Author: {{ pack.author|default:"Community" }}
+                            </small>
+                        </div>
+                        <form method="post" action="{% url 'toggle_voice_pack_default' pack.id %}" style="margin:0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm {% if pack.is_default %}btn-secondary{% else %}btn-accent{% endif %}">
+                                {% if pack.is_default %}Remove Default{% else %}Set as Default{% endif %}
+                            </button>
+                        </form>
+                    </div>
+
+                    <p style="font-size:0.88rem; color:var(--text); margin:0.35rem 0 0.75rem;">
+                        {{ pack.description|default:"No description provided." }}
+                    </p>
+
+                    <!-- Clips Accordion / Sampler -->
+                    <details style="background:var(--surface-alt); padding:0.5rem 0.75rem; border-radius:var(--radius); font-size:0.84rem; border:1px solid var(--border);">
+                        <summary style="font-weight:700; cursor:pointer; color:var(--primary);">
+                            Audition Audio Clips ({{ pack.clips.count }} available)
+                        </summary>
+                        <div style="display:grid; gap:0.4rem; margin-top:0.5rem; max-height:220px; overflow-y:auto;">
+                            {% for clip in pack.clips.all %}
+                                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface); padding:0.4rem 0.6rem; border-radius:4px;">
+                                    <div>
+                                        <strong>{{ clip.event_type }}</strong> ({{ clip.situational_tag }}):
+                                        <span style="font-style:italic; color:var(--text-muted);">&ldquo;{{ clip.transcript }}&rdquo;</span>
+                                    </div>
+                                    {% if clip.audio_file %}
+                                        <audio controls src="{{ clip.audio_file.url }}" preload="none" style="height:28px; width:180px;"></audio>
+                                    {% endif %}
+                                </div>
+                            {% empty %}
+                                <p style="color:var(--text-muted); margin:0;">No clips registered in this pack.</p>
+                            {% endfor %}
+                        </div>
+                    </details>
+                </div>
+            {% empty %}
+                <div class="card" style="text-align:center; padding:2rem;">
+                    <p style="color:var(--text-muted);">No voice packs registered yet. Run <code>python manage.py seed_voice_packs</code> or upload a ZIP archive below.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Bulk Upload ZIP Form & Soundboard Overview -->
+    <div>
+        <!-- Bulk ZIP Ingestion Card -->
+        <div class="card" style="margin-bottom:1.5rem;">
+            <h2>📦 Bulk Import Voice Pack (ZIP)</h2>
+            <p style="font-size:0.86rem; color:var(--text-muted); margin-top:0;">
+                Upload a ZIP archive containing event folders (e.g. <code>/walk/01.mp3</code>, <code>/strikeout/01.mp3</code>). Durations and metadata are parsed automatically.
+            </p>
+            <form method="post" action="{% url 'voice_pack_upload_zip' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <p>
+                    <label for="id_pack_name">Voice Pack Name *</label>
+                    <input type="text" id="id_pack_name" name="name" placeholder="e.g. Bob Uecker (Major League Radio)" required class="input" style="width:100%;">
+                </p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                    <p>
+                        <label for="id_sport">Sport *</label>
+                        <select id="id_sport" name="sport" class="input" style="width:100%;">
+                            <option value="softball" selected>Softball / Baseball</option>
+                            <option value="basketball">Basketball</option>
+                            <option value="flag_football">Flag Football</option>
+                            <option value="all">All Sports</option>
+                        </select>
+                    </p>
+                    <p>
+                        <label for="id_author">Voice Artist / Model</label>
+                        <input type="text" id="id_author" name="author" placeholder="e.g. Frank Caliendo Tribute" class="input" style="width:100%;">
+                    </p>
+                </div>
+                <p>
+                    <label for="id_zip_file">ZIP Audio Archive (.zip) *</label>
+                    <input type="file" id="id_zip_file" name="zip_file" accept=".zip" required class="input" style="width:100%;">
+                </p>
+                <p style="display:flex; align-items:center; gap:0.5rem;">
+                    <input type="checkbox" id="id_is_default" name="is_default" style="width:auto;">
+                    <label for="id_is_default" style="margin:0; font-weight:600;">Set as default voice pack for this sport</label>
+                </p>
+                <button type="submit" class="btn btn-accent" style="width:100%;">📤 Upload &amp; Ingest Voice Pack</button>
+            </form>
+        </div>
+
+        <!-- Soundboard FX Catalog -->
+        <div class="card">
+            <h2>🎷 Press Box Soundboard Effects</h2>
+            <p style="font-size:0.86rem; color:var(--text-muted); margin-top:0;">
+                These 1-touch audio stingers are accessible directly from the Dugout Console drawer and can be triggered via keyboard hotkeys.
+            </p>
+            <div style="display:grid; gap:0.5rem;">
+                {% for fx in soundboard_effects %}
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-alt); padding:0.6rem 0.85rem; border-radius:6px; border:1px solid var(--border);">
+                        <div>
+                            <strong>{{ fx.icon }} {{ fx.name }}</strong>
+                            {% if fx.hotkey %}
+                                <kbd style="font-size:0.72rem; background:rgba(0,0,0,0.15); padding:2px 5px; border-radius:3px; margin-left:0.35rem;">Key: {{ fx.hotkey }}</kbd>
+                            {% endif %}
+                            <small style="color:var(--text-muted); display:block;">
+                                Category: {{ fx.get_category_display }} &bull; {% if fx.loop_mode %}Looping (Toggle Off){% else %}{{ fx.audio_duration }}s Stinger{% endif %}
+                            </small>
+                        </div>
+                        {% if fx.audio_file %}
+                            <audio controls src="{{ fx.audio_file.url }}" preload="none" style="height:26px; width:160px;"></audio>
+                        {% endif %}
+                    </div>
+                {% empty %}
+                    <p style="color:var(--text-muted);">No soundboard effects created. Run <code>python manage.py seed_voice_packs</code>.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

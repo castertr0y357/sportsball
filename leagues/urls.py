@@ -79,6 +79,10 @@ from leagues.views import (
     ReportGameIncidentView,
     SubmitSportsmanshipRatingView,
     ManageSportsmanshipDashboardView,
+    # Voice Packs & Soundboard Admin
+    VoicePackListView,
+    VoicePackUploadZipView,
+    ToggleVoicePackDefaultView,
 )
 
 urlpatterns = [
@@ -188,4 +192,11 @@ urlpatterns = [
     path('games/<int:game_id>/incident/report/', ReportGameIncidentView.as_view(), name='report_game_incident'),
     path('games/<int:game_id>/sportsmanship/rate/', SubmitSportsmanshipRatingView.as_view(), name='submit_sportsmanship_rating'),
     path('<int:league_id>/sportsmanship/', ManageSportsmanshipDashboardView.as_view(), name='manage_sportsmanship_dashboard'),
+
+    # -------------------------------------------------------------------------
+    # 12. Voice Announcer & Press Box Soundboard Administration
+    # -------------------------------------------------------------------------
+    path('voice-packs/', VoicePackListView.as_view(), name='voice_pack_list'),
+    path('voice-packs/upload-zip/', VoicePackUploadZipView.as_view(), name='voice_pack_upload_zip'),
+    path('voice-packs/<int:pack_id>/toggle-default/', ToggleVoicePackDefaultView.as_view(), name='toggle_voice_pack_default'),
 ]

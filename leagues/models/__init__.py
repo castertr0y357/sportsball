@@ -11,6 +11,7 @@ from .official import GameOfficialAssignment
 from .game import Game
 from .lineup import GameLineupEntry, GameRSVP
 from .discipline import PlayerDisciplinaryRecord, GameSportsmanshipRating
+from .voice_announcer import VoicePack, VoiceClip, SoundboardEffect
 
 __all__ = [
     'League',
@@ -24,4 +25,7 @@ __all__ = [
     'LeagueVenue',
     'PlayerDisciplinaryRecord',
     'GameSportsmanshipRating',
+    'VoicePack',
+    'VoiceClip',
+    'SoundboardEffect',
 ]

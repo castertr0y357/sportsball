@@ -148,6 +148,14 @@ class League(models.Model):
         on_delete=models.CASCADE,
         related_name='leagues'
     )
+    voice_pack = models.ForeignKey(
+        'leagues.VoicePack',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='leagues',
+        help_text="Default voice announcer pack for games in this league"
+    )
     master_officials_pool = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         blank=True,

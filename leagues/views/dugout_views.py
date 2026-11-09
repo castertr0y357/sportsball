@@ -15,6 +15,7 @@ from django.views.generic import View, TemplateView
 from leagues.models import Game, League
 from leagues.views.mixins import ScorekeeperAccessMixin, JsonResponseMixin
 from leagues.services import scoring_engine
+from leagues.services.voice_announcer_service import VoiceAnnouncerService
 
 
 class DugoutConsoleView(ScorekeeperAccessMixin, View):
@@ -34,11 +35,16 @@ class DugoutConsoleView(ScorekeeperAccessMixin, View):
 
         state = scoring_engine.serialize_game_state(game)
         state['is_locked'] = is_locked
+        soundboard_effects = VoiceAnnouncerService.get_soundboard_catalog()
+        active_voice_pack = game.get_effective_voice_pack()
         return render(request, 'leagues/dugout_console.html', {
             'game': game,
             'initial_state_json': json.dumps(state),
             'is_locked': is_locked,
             'active_scorer': game.active_scorer,
+            'soundboard_effects': soundboard_effects,
+            'soundboard_effects_json': json.dumps(soundboard_effects),
+            'voice_pack': active_voice_pack,
         })
 
 
@@ -112,6 +118,16 @@ class DugoutActionView(LoginRequiredMixin, JsonResponseMixin, View):
         trigger_walkup, state = scoring_engine.apply_scoring_action(game, action, payload)
         state['trigger_walkup'] = trigger_walkup
         state['is_locked'] = False
+
+        # Resolve announcer voice clips for play events and batter introductions
+        announcement = VoiceAnnouncerService.resolve_play_announcement(game, action, payload)
+        if announcement:
+            state['announcement'] = announcement
+
+        if trigger_walkup and game.current_batter:
+            batter_intro = VoiceAnnouncerService.resolve_batter_intro(game, game.current_batter)
+            state['batter_intro'] = batter_intro
+
         return JsonResponse(state)
 
 

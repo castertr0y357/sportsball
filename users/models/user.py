@@ -108,6 +108,23 @@ class CustomUser(AbstractUser):
         help_text="Active precision walk-up track"
     )
 
+    # Phonetic pronunciation & Custom Announcer Voice Intro
+    phonetic_name = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="Phonetic pronunciation for stadium PA (e.g. 'Josh PEE-ter-sen')"
+    )
+    custom_announcer_clip = models.FileField(
+        upload_to='announcer_clips/',
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=['mp3', 'wav', 'm4a', 'ogg', 'aac']),
+            validate_audio_file_size,
+        ],
+        help_text="Custom pre-recorded stadium announcer intro (e.g. 'Now batting, #12, Josh Peterson')"
+    )
+
     def get_active_walkup(self) -> dict:
         """
         Returns active walk-up audio playback dictionary:
